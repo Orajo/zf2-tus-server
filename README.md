@@ -39,9 +39,9 @@ RewriteRule ^(.*)$ index.php [QSA,L]
 Author
 ------
 
-Jaroslaw Wasilewski <orajo@windowslive.com>
-This library based on oryginal PhpTus library (https://github.com/leblanc-simon/php-tus) by Simon Leblanc <contact@leblanc-simon.eu>
+Jaroslaw Wasilewski <orajo@windowslive.com>.
 
+This library is based on PhpTus library (https://github.com/leblanc-simon/php-tus) by Simon Leblanc <contact@leblanc-simon.eu>.
 
 License
 -------
