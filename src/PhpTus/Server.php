@@ -10,10 +10,10 @@
 
 namespace PhpTus;
 
-use Symfony\Component\HttpFoundation\Request as Request;
-use Symfony\Component\HttpFoundation\Response as Response;
-
-use Predis\Client as PredisClient;
+use \Zend\Http\PhpEnvironment\Request as PhpRequest;
+use \Zend\Http\PhpEnvironment\Response as PhpResponse;
+use Zend\Http\Headers;
+use Zend\Session\Container;
 
 class Server
 {
@@ -25,37 +25,35 @@ class Server
     const OPTIONS   = 'OPTIONS';
     const GET       = 'GET';
 
+    const SESSION_CONTAINER = 'tus';
+
+    const TUS_VERSION = '1.0.0';
+
     private $uuid       = null;
     private $directory  = null;
-    private $path       = null;
     private $host       = null;
 
     private $request    = null;
     private $response   = null;
 
-    private $redis          = null;
-    private $redis_options  = array(
-        'prefix'    => 'php-tus-',
-        'scheme'    => 'tcp',
-        'host'      => '127.0.0.1',
-        'port'      => '6379',
-    );
+    /**
+     *
+     * @var Zend\Session\Container
+     */
+    private $session    = null;
 
 
     /**
      * Constructor
      *
      * @param   string      $directory      The directory to use for save the file
-     * @param   string      $path           The path to use in the URI
      * @param   null|array  $redis_options  Override the default Redis options
      * @access  public
      */
-    public function __construct($directory, $path, $redis_options = null)
+    public function __construct($directory, \Zend\Http\PhpEnvironment\Request $request)
     {
-        $this
-            ->setDirectory($directory)
-            ->setPath($path)
-            ->setRedisOptions($redis_options);
+        $this->setDirectory($directory);
+        $this->request = $request;
     }
 
 
@@ -70,11 +68,15 @@ class Server
     public function process($send = false)
     {
         try {
+            if(!$this->checkTusVersion()) {
+                throw new Exception\Request('The requested protocol verison is not supported', \Zend\Http\Response::STATUS_CODE_405);
+            }
+
             $method = $this->getRequest()->getMethod();
 
-            if ($method === self::OPTIONS) {
+            if ($this->getRequest()->isOptions()) {
                 $this->uuid = null;
-            } elseif ($method === self::POST) {
+            } elseif ($this->getRequest()->isPost()) {
                 $this->buildUuid();
             } else {
                 $this->getUserUuid();
@@ -96,13 +98,13 @@ class Server
                 case self::OPTIONS:
                     $this->processOptions();
                     break;
-
-                case self::GET:
-                    $this->processGet($send);
-                    break;
+//
+//                case self::GET:
+//                    $this->processGet($send);
+//                    break;
 
                 default:
-                    throw new Exception\Request('The requested method '.$method.' is not allowed', 405);
+                    throw new Exception\Request('The requested method '.$method.' is not allowed', \Zend\Http\Response::STATUS_CODE_405);
             }
 
             $this->addCommonHeader();
@@ -115,44 +117,48 @@ class Server
                 throw $e;
             }
 
-            $this->response = new Response(null, 400);
+            $this->getResponse()->setStatusCode(\Zend\Http\Response::STATUS_CODE_400);
             $this->addCommonHeader();
         } catch (Exception\Request $e) {
             if ($send === false) {
                 throw $e;
             }
 
-            $this->response = new Response($e->getMessage(), $e->getCode());
-            $this->addCommonHeader();
+            $this->getResponse()->setStatusCode($e->getCode())
+                    ->setContent($e->getMessage());
+            $this->addCommonHeader(true);
         } catch (\Exception $e) {
             if ($send === false) {
                 throw $e;
             }
 
-            $this->response = new Response(null, 500);
+            $this->getResponse()->setStatusCode(\Zend\Http\Response::STATUS_CODE_500);
             $this->addCommonHeader();
         }
 
-        $this->response->sendHeaders();
-        
+        $this->getResponse()->sendHeaders();
+
         // The process must only sent the HTTP headers : kill request after send
         exit;
+    }
+
+    private function checkTusVersion() {
+        $tusVersion = $this->getRequest()->getHeader('Tus-Resumable');
+        if ($tusVersion instanceof \Zend\Http\Header\HeaderInterface) {
+            return $tusVersion->getFieldValue()  === self::TUS_VERSION;
+        }
+        return false;
     }
 
 
     /**
      * Build a new UUID (use in the POST request)
      *
-     * @throws  \DomainException    If the path isn't define
      * @access  private
      */
     private function buildUuid()
     {
-        if ($this->path === null) {
-            throw new \DomainException('Path can\'t be null when call '.__METHOD__);
-        }
-
-        $this->uuid = $this->path.hash('sha256', uniqid(mt_rand().php_uname(), true));
+        $this->uuid = hash('md5', uniqid(mt_rand().php_uname(), true));
     }
 
 
@@ -160,21 +166,18 @@ class Server
      * Get the UUID of the request (use for HEAD and PATCH request)
      *
      * @return  string                      The UUID of the request
-     * @throws  \InvalidArgumentException   If the UUID doesn't match with the path
+     * @throws  \InvalidArgumentException   If the UUID is empty
      * @access  private
      */
     private function getUserUuid()
     {
         if ($this->uuid === null) {
-            $uuid = $this->getRequest()->getRequestUri();
-
-            if (strpos($uuid, $this->path) !== 0) {
-                throw new \InvalidArgumentException('The uuid and the path doesn\'t match : '.$uuid.' - '.$this->path);
+           $uuid = $this->getRequest()->getQuery('uuid');
+            if (empty($uuid)) {
+                throw new \InvalidArgumentException('The uuid cannot be empty: ');
             }
-
             $this->uuid = $uuid;
         }
-
         return $this->uuid;
     }
 
@@ -190,17 +193,17 @@ class Server
      */
     private function processPost()
     {
-        if ($this->existsInRedis($this->uuid) === true) {
+        if ($this->existsInSession($this->uuid) === true) {
             throw new \Exception('The UUID already exists');
         }
 
-        $headers = $this->extractHeaders(array('Final-Length'));
+        $headers = $this->extractHeaders(array('Upload-Length'));
 
-        if (is_numeric($headers['Final-Length']) === false || $headers['Final-Length'] < 0) {
-            throw new Exception\BadHeader('Final-Length must be a positive integer');
+        if (is_numeric($headers['Upload-Length']) === false || $headers['Upload-Length'] < 0) {
+            throw new Exception\BadHeader('Upload-Length must be a positive integer');
         }
 
-        $final_length = (int)$headers['Final-Length'];
+        $final_length = (int)$headers['Upload-Length'];
 
         $file = $this->directory.$this->getFilename();
 
@@ -212,12 +215,15 @@ class Server
             throw new Exception\File('Impossible to touch '.$file);
         }
 
-        $this->setInRedis($this->uuid, 'Final-Length', $final_length);
-        $this->setInRedis($this->uuid, 'Offset', 0);
+        $this->setSessionData($this->uuid, 'Upload-Length', $final_length);
+        $this->setSessionData($this->uuid, 'Upload-Offset', 0);
+        $this->setSessionData($this->uuid, 'UUID', $this->uuid);
 
-        $this->response = new Response(null, 201, array(
-            'Location' => $this->getRequest()->getSchemeAndHttpHost().$this->uuid,
-        ));
+        $this->getResponse()->setStatusCode(201);
+        $this->getResponse()->setHeaders(
+                (new \Zend\Http\Headers())->addHeaderLine('Location',
+                         $this->getRequest()->getRequestUri().'?uuid='.$this->uuid)
+                );
     }
 
 
@@ -229,15 +235,14 @@ class Server
      */
     private function processHead()
     {
-        if ($this->existsInRedis($this->uuid) === false) {
+        if ($this->existsInSession($this->uuid, 'UUID') === false) {
             throw new \Exception('The UUID doesn\'t exists');
         }
 
-        $offset = $this->getInRedis($this->uuid, 'Offset');
+        $offset = $this->getSessionValue($this->uuid, 'Upload-Offset');
 
-        $this->response = new Response(null, 200, array(
-            'Offset' => $offset,
-        ));
+        $this->getResponse()->setStatusCode(PhpResponse::STATUS_CODE_200);
+        $this->getResponse()->setHeaders((new Headers())->addHeaderLine('Upload-Offset', $offset));
     }
 
 
@@ -257,15 +262,15 @@ class Server
     private function processPatch()
     {
         // Check the uuid
-        if ($this->existsInRedis($this->uuid) === false) {
+        if ($this->existsInSession($this->uuid, 'UUID') === false) {
             throw new \Exception('The UUID doesn\'t exists');
         }
 
         // Check HTTP headers
-        $headers = $this->extractHeaders(array('Offset', 'Content-Length', 'Content-Type'));
+        $headers = $this->extractHeaders(array('Upload-Offset', 'Content-Length', 'Content-Type'));
 
-        if (is_numeric($headers['Offset']) === false || $headers['Offset'] < 0) {
-            throw new Exception\BadHeader('Offset must be a positive integer');
+        if (is_numeric($headers['Upload-Offset']) === false || $headers['Upload-Offset'] < 0) {
+            throw new Exception\BadHeader('Upload-Offset must be a positive integer');
         }
 
         if (is_numeric($headers['Content-Length']) === false || $headers['Content-Length'] < 0) {
@@ -277,22 +282,18 @@ class Server
         }
 
         // Initialize vars
-        $offset_header = (int)$headers['Offset'];
-        $offset_redis = $this->getInRedis($this->uuid, 'Offset');
-        $max_length = $this->getInRedis($this->uuid, 'Final-Length');
-        $content_length = (int)$headers['Content-Length'];
+        $offset_header = (int)$headers['Upload-Offset'];
+        $offset_redis = $this->getSessionValue($this->uuid, 'Upload-Offset');
+        $max_length = $content_length = (int)$headers['Content-Length'];
 
         // Check consistency (user vars vs database vars)
         if ($offset_redis === null || (int)$offset_redis !== $offset_header) {
-            throw new Exception\BadHeader('Offset header isn\'t the same as in Redis');
-        }
-        if ($max_length === null || (int)$offset_redis > (int)$max_length) {
-            throw new Exception\Required('Final-Length is required and must be greather than Offset');
+            throw new Exception\BadHeader('Upload-Offset header isn\'t the same as in Redis');
         }
 
         // Check if the file isn't already entirely write
         if ((int)$offset_redis === (int)$max_length) {
-            $this->response = new Response(null, 200);
+            $this->getResponse()->setStatusCode(200);
             return;
         }
 
@@ -325,7 +326,7 @@ class Server
                 if(connection_status() != CONNECTION_NORMAL) {
                     throw new Exception\Abort('User abort connexion');
                 }
-            
+
                 $data = fread($handle_input, 8192);
                 if ($data === false) {
                     throw new Exception\File('Impossible to read the datas');
@@ -352,7 +353,7 @@ class Server
 
                 $current_size += $size_write;
                 $total_write += $size_write;
-                $this->setInRedis($this->uuid, 'Offset', $current_size);
+                $this->setSessionData($this->uuid, 'Upload-Offset', $current_size);
 
                 if ($total_write === $content_length) {
                     fclose($handle_input);
@@ -363,18 +364,19 @@ class Server
         } catch (Exception\Max $e) {
             fclose($handle_input);
             fclose($handle_output);
-            $this->response = new Response(null, 400);
+            $this->getResponse()->setStatusCode(PhpResponse::STATUS_CODE_400);
         } catch (Exception\File $e) {
             fclose($handle_input);
             fclose($handle_output);
-            $this->response = new Response(null, 500);
+            $this->getResponse()->setStatusCode(PhpResponse::STATUS_CODE_500);
         } catch (Exception\Abort $e) {
             fclose($handle_input);
             fclose($handle_output);
-            $this->response = new Response(null, 100);
+            $this->getResponse()->setStatusCode(PhpResponse::STATUS_CODE_100);
         }
 
-        $this->response = new Response(null, 200);
+        $this->getResponse()->setStatusCode(PhpResponse::STATUS_CODE_200);
+        $this->getResponse()->setHeaders((new Headers())->addHeaderLine('Upload-Offset', $current_size));
     }
 
 
@@ -385,54 +387,29 @@ class Server
      */
     private function processOptions()
     {
-        $this->response = new Response(null, 200);
+        $this->getResponse()->getStatusCode(200);
     }
-
-
-    /**
-     * Process the GET request
-     *
-     * @access  private
-     */
-    private function processGet($send)
-    {
-        $file = $this->directory.$this->getFilename();
-
-        if (file_exists($file) === false || is_readable($file) === false) {
-            throw new Exception\Request('The file '.$this->uuid.' doesn\'t exist', 404);
-        }
-
-        $this->response = new Response(null, 200);
-        $this->addCommonHeader();
-
-        $this->response->headers->set('Content-Type', 'application/force-download', true);
-        $this->response->headers->set('Content-disposition', 'attachment; filename="'.str_replace('"', '', basename($this->uuid)).'"', true);
-        $this->response->headers->set('Content-Transfer-Encoding', 'application/octet-stream', true);
-        $this->response->headers->set('Pragma', 'no-cache', true);
-        $this->response->headers->set('Cache-Control', 'must-revalidate, post-check=0, pre-check=0, public', true);
-        $this->response->headers->set('Expires', '0', true);
-
-        if ($send === true) {
-            $this->response->sendHeaders();
-
-            readfile($file);
-            exit;
-        }
-    }
-
 
     /**
      * Add the commons headers to the HTTP response
      *
      * @access  private
      */
-    private function addCommonHeader()
+    private function addCommonHeader($isOption = false)
     {
-        $this->response->headers->set('Allow', 'OPTIONS,GET,HEAD,POST,PATCH', true);
-        $this->response->headers->set('Access-Control-Allow-Methods', 'OPTIONS,GET,HEAD,POST,PATCH', true);
-        $this->response->headers->set('Access-Control-Allow-Origin', '*', true);
-        $this->response->headers->set('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Final-Length, Offset', true);
-        $this->response->headers->set('Access-Control-Expose-Headers', 'Location, Range, Content-Disposition, Offset', true);
+        $headers = $this->getResponse()->getHeaders();
+        $headers->addHeaderLine('Tus-Resumable', self::TUS_VERSION);
+
+        if ($isOption) {
+            $headers->addHeaders([
+                'Allow' => 'OPTIONS,HEAD,POST,PATCH',
+                'Access-Control-Allow-Methods' => 'OPTIONS,HEAD,POST,PATCH',
+                'Access-Control-Allow-Origin' => '*',
+                'Access-Control-Allow-Headers' => 'Origin, X-Requested-With, Content-Type, Accept, Final-Length, Offset',
+                'Access-Control-Expose-Headers' => 'Location, Range, Content-Disposition, Upload-Offset',
+            ]);
+        }
+        return $this->response->setHeaders($headers);
     }
 
 
@@ -452,14 +429,23 @@ class Server
         }
 
         $headers_values = array();
-        foreach ($headers as $header) {
-            $value = $this->getRequest()->headers->get($header);
+        foreach ($headers as $headerName) {
+            $headerObj = $this->getRequest()->getHeader($headerName);
+            if ($headerObj instanceof \Zend\Http\Header\HeaderInterface) {
+                $value = $headerObj->getFieldValue();
 
-            if (trim($value) === '') {
-                throw new Exception\BadHeader($header.' can\'t be empty');
+                // \Zend\Http\Header\ContentLength has a bug in initialization
+                // if header value is 0 then it sets value as null
+                if (is_null($value) && $headerObj instanceof \Zend\Http\Header\ContentLength) {
+                    $value = 0;
+                }
+
+                if (trim($value) === '') {
+                    throw new Exception\BadHeader($headerName.' can\'t be empty');
+                }
+
+                $headers_values[$headerName] = $value;
             }
-
-            $headers_values[$header] = $value;
         }
 
         return $headers_values;
@@ -480,7 +466,7 @@ class Server
         if (is_string($directory) === false) {
             throw new \InvalidArgumentException('Directory must be a string');
         }
-        
+
         if (is_dir($directory) === false || is_writable($directory) === false) {
             throw new Exception\File($directory.' doesn\'t exist or isn\'t writable');
         }
@@ -490,63 +476,20 @@ class Server
         return $this;
     }
 
-
-    /**
-     * Set the path to use in the URI
-     *
-     * @param   string      $path           The path to use in the URI
-     * @return  \PhpTus\Server              The current Server instance
-     * @throws  \InvalidArgumentException   If path isn't string
-     * @access  private
-     */
-    private function setPath($path)
-    {
-        if (is_string($path) === false) {
-            throw new \InvalidArgumentException('Path must be a string');
-        }
-
-        $this->path = $path;
-
-        return $this;
-    }
-
-
-    /**
-     * Set the options to use for the Redis usage
-     *
-     * @param   null|array  $options        The options to use for the Redis usage
-     * @return  \PhpTus\Server              The current Server instance
-     * @throws  \InvalidArgumentException   If options is not null or array
-     * @access  private
-     */
-    private function setRedisOptions($options)
-    {
-        if ($options === null) {
-            return $this;
-        }
-
-        if (is_array($options) === true) {
-            $this->redis_options = array_merge($this->redis_options, $options);
-            return $this;
-        }
-
-        throw new \InvalidArgumentException('Options must be null or an array');
-    }
-
-
     /**
      * Get the Redis connection
      *
-     * @return  Predis\Client       The Predis client to use for manipulate Redis database
+     * @return  \Zend\Session\Container
      * @access  private
      */
-    private function getRedis()
+    private function getSessionData()
     {
-        if ($this->redis === null) {
-            $this->redis = new PredisClient($this->redis_options);
+
+        if ($this->session === null) {
+            $this->session = new \Zend\Session\Container(self::SESSION_CONTAINER);
         }
 
-        return $this->redis;
+        return $this->session;
     }
 
 
@@ -558,13 +501,9 @@ class Server
      * @param   mixed       $value  The value for the id-key to save
      * @access  private
      */
-    private function setInRedis($id, $key, $value)
+    private function setSessionData($id, $key, $value)
     {
-        if (is_array($value) === true) {
-            $this->getRedis()->hmset($this->redis_options['prefix'].$id, $key, $value);
-        } else {
-            $this->getRedis()->hset($this->redis_options['prefix'].$id, $key, $value);
-        }
+        $this->getSessionData()->offsetSet(self::getSessionKey($id, $key), $value);
     }
 
 
@@ -576,22 +515,27 @@ class Server
      * @return  mixed               The value for the id-key
      * @access  private
      */
-    private function getInRedis($id, $key)
+    private function getSessionValue($id, $key)
     {
-        return $this->getRedis()->hget($this->redis_options['prefix'].$id, $key);
+        return $this->getSessionData()->offsetGet(self::getSessionKey($id, $key));
+    }
+
+    private static function getSessionKey($id, $key) {
+        return $id . '_'. $key;
     }
 
 
     /**
      * Check if an id exists in the Redis database
+     * FIXME: w sesji to ma być id i key
      *
      * @param   string      $id     The id to test
      * @return  bool                True if the id exists, false else
      * @access  private
      */
-    private function existsInRedis($id)
+    private function existsInSession($id, $key = 'UUID')
     {
-        return $this->getRedis()->exists($this->redis_options['prefix'].$id);
+        return $this->getSessionData()->offsetExists(self::getSessionKey($id, $key));
     }
 
 
@@ -599,36 +543,27 @@ class Server
      * Get the filename to use when save the uploaded file
      *
      * @return  string              The filename to use
-     * @throws  \DomainException    If the path isn't define
      * @throws  \DomainException    If the uuid isn't define
      * @access  private
      */
     private function getFilename()
     {
-        if ($this->path === null) {
-            throw new \DomainException('Path can\'t be null when call '.__METHOD__);
-        }
-
         if ($this->uuid === null) {
             throw new \DomainException('Uuid can\'t be null when call '.__METHOD__);
         }
 
-        return str_replace($this->path, '', $this->uuid);
+        return $this->uuid;
     }
 
 
     /**
      * Get the HTTP Request object
      *
-     * @return  \Symfony\Component\HttpFoundation\Request       the HTTP Request object
+     * @return  \Zend\Http\Request       the HTTP Request object
      * @access  private
      */
     private function getRequest()
     {
-        if ($this->request === null) {
-            $this->request = Request::createFromGlobals();
-        }
-
         return $this->request;
     }
 
@@ -636,13 +571,13 @@ class Server
     /**
      * Get the HTTP Response object
      *
-     * @return  \Symfony\Component\HttpFoundation\Response      the HTTP Response object
+     * @return  \Zend\Http\Response      the HTTP Response object
      * @access  private
      */
-    private function getResponse()
+    public function getResponse()
     {
         if ($this->response === null) {
-            $this->response = new Response();
+            $this->response = new PhpResponse();
         }
 
         return $this->response;
