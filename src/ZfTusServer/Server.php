@@ -186,9 +186,9 @@ class Server
      * Process the POST request
      *
      * @throws  \Exception                      If the uuid already exists
-     * @throws  \\Exception\BadHeader     If the final length header isn't a positive integer
-     * @throws  \\Exception\File          If the file already exists in the filesystem
-     * @throws  \\Exception\File          If the creation of file failed
+     * @throws  \ZfTusServer\Exception\BadHeader     If the final length header isn't a positive integer
+     * @throws  \ZfTusServer\Exception\File          If the file already exists in the filesystem
+     * @throws  \ZfTusServer\Exception\File          If the creation of file failed
      * @access  private
      */
     private function processPost()
@@ -250,14 +250,14 @@ class Server
      * Process the PATCH request
      *
      * @throws  \Exception                      If the uuid isn't know
-     * @throws  \\Exception\BadHeader     If the Offset header isn't a positive integer
-     * @throws  \\Exception\BadHeader     If the Content-Length header isn't a positive integer
-     * @throws  \\Exception\BadHeader     If the Content-Type header isn't "application/offset+octet-stream"
-     * @throws  \\Exception\BadHeader     If the Offset header and Offset Redis are not equal
-     * @throws  \\Exception\Required      If the final length is smaller than offset
-     * @throws  \\Exception\File          If it's impossible to open php://input
-     * @throws  \\Exception\File          If it's impossible to open the destination file
-     * @throws  \\Exception\File          If it's impossible to set the position in the destination file
+     * @throws  \ZfTusServer\Exception\BadHeader     If the Offset header isn't a positive integer
+     * @throws  \ZfTusServer\Exception\BadHeader     If the Content-Length header isn't a positive integer
+     * @throws  \ZfTusServer\Exception\BadHeader     If the Content-Type header isn't "application/offset+octet-stream"
+     * @throws  \ZfTusServer\Exception\BadHeader     If the Offset header and Offset Redis are not equal
+     * @throws  \ZfTusServer\Exception\Required      If the final length is smaller than offset
+     * @throws  \ZfTusServer\Exception\File          If it's impossible to open php://input
+     * @throws  \ZfTusServer\Exception\File          If it's impossible to open the destination file
+     * @throws  \ZfTusServer\Exception\File          If it's impossible to set the position in the destination file
      */
     private function processPatch()
     {

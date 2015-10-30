@@ -1,6 +1,6 @@
 <?php
 /**
- * This file is part of the  package.
+ * This file is part of the ZfTusServer package.
  *
  * (c) Simon Leblanc <contact@leblanc-simon.eu>
  *
@@ -8,7 +8,7 @@
  * file that was distributed with this source code.
  */
 
-namespace \Exception;
+namespace ZfTusServer\Exception;
 
 class Curl extends \Exception 
 {
