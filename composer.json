@@ -1,12 +1,17 @@
 {
-    "name": "leblanc-simon/php-tus",
+    "name": "orajo/zf2-tus-server",
     "version": "1.0",
-    "description": "PHP Library for tus protocol (client and server)",
+    "description": "Zend Framework 2 (PHP) library for tus server, based on php-tus library by Simon Leblanc.",
     "authors": [{
         "name": "Simon Leblanc",
         "email": "contact@leblanc-simon.eu",
         "homepage": "http://www.leblanc-simon.fr",
         "role": "Developer"
+    },
+    {
+        "name"    : "Jaroslaw Wasilewski",
+        "email"   : "orajo@windowslive.com",
+        "role"    : "Developer"
     }],
     "license": "MIT",
     
@@ -20,9 +25,7 @@
     
     "require": {
         "php": ">=5.3.0",
-        "ext-curl": "*",
-        "symfony/http-foundation": "2.7.5",
-        "predis/predis": "1.0.3"
+        "zendframework/zendframework" : ">2.3.0", 
     },
     
     "require-dev": {
