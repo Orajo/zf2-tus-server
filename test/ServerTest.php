@@ -1,6 +1,6 @@
 <?php
 /**
- * This file is part of the PhpTus package.
+ * This file is part of the  package.
  *
  * (c) Simon Leblanc <contact@leblanc-simon.eu>
  *
@@ -20,7 +20,7 @@ class ServerTest extends PHPUnit_Framework_TestCase
         $_SERVER['SERVER_NAME'] = 'localhost';
         $_SERVER['SERVER_PORT'] = 80;
 
-        $server = new PhpTus\Server(__DIR__.DIRECTORY_SEPARATOR.'data'.DIRECTORY_SEPARATOR.'server', 
+        $server = new \Server(__DIR__.DIRECTORY_SEPARATOR.'data'.DIRECTORY_SEPARATOR.'server', 
                                     '/files/', 
                                     array('prefix' => 'php-tus-test-')
         );
@@ -42,7 +42,7 @@ class ServerTest extends PHPUnit_Framework_TestCase
         $_SERVER['SERVER_NAME'] = 'localhost';
         $_SERVER['SERVER_PORT'] = 80;
 
-        $server = new PhpTus\Server(__DIR__.DIRECTORY_SEPARATOR.'data'.DIRECTORY_SEPARATOR.'server', 
+        $server = new \Server(__DIR__.DIRECTORY_SEPARATOR.'data'.DIRECTORY_SEPARATOR.'server', 
                                     '/files/', 
                                     array('prefix' => 'php-tus-test-')
         );
@@ -71,7 +71,7 @@ class ServerTest extends PHPUnit_Framework_TestCase
         $_SERVER['SERVER_PORT'] = 80;
         $_SERVER['REQUEST_URI'] = str_replace('http://localhost', '', $location);
 
-        $server = new PhpTus\Server(__DIR__.DIRECTORY_SEPARATOR.'data'.DIRECTORY_SEPARATOR.'server', 
+        $server = new \Server(__DIR__.DIRECTORY_SEPARATOR.'data'.DIRECTORY_SEPARATOR.'server', 
                                     '/files/', 
                                     array('prefix' => 'php-tus-test-')
         );
@@ -96,7 +96,7 @@ class ServerTest extends PHPUnit_Framework_TestCase
         $_SERVER['SERVER_PORT'] = 80;
         $_SERVER['REQUEST_URI'] = str_replace('http://localhost', '', $location);
 
-        $server = new PhpTus\Server(__DIR__.DIRECTORY_SEPARATOR.'data'.DIRECTORY_SEPARATOR.'server', 
+        $server = new \Server(__DIR__.DIRECTORY_SEPARATOR.'data'.DIRECTORY_SEPARATOR.'server', 
                                     '/files/', 
                                     array('prefix' => 'php-tus-test-')
         );
@@ -112,7 +112,7 @@ class ServerTest extends PHPUnit_Framework_TestCase
 
     /**
      * @depends     testPost
-     * @expectedException   \PhpTus\Exception\Request
+     * @expectedException   \\Exception\Request
      * @expectedExceptionCode   404
      */
     public function testFailGet($location)
@@ -123,7 +123,7 @@ class ServerTest extends PHPUnit_Framework_TestCase
         $_SERVER['SERVER_PORT'] = 80;
         $_SERVER['REQUEST_URI'] = str_replace('http://localhost', '', substr($location, 0, -1));
 
-        $server = new PhpTus\Server(__DIR__.DIRECTORY_SEPARATOR.'data'.DIRECTORY_SEPARATOR.'server', 
+        $server = new \Server(__DIR__.DIRECTORY_SEPARATOR.'data'.DIRECTORY_SEPARATOR.'server', 
                                     '/files/', 
                                     array('prefix' => 'php-tus-test-')
         );

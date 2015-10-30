@@ -16,7 +16,7 @@
     "type": "library",
     "autoload": {
         "psr-0": {
-            "PhpTus": "src/"
+            "ZfTusServer": "src/"
         }
     },
     "require": {

@@ -1,6 +1,6 @@
 <?php
 /**
- * This file is part of the PhpTus package.
+ * This file is part of the  package.
  *
  * (c) Simon Leblanc <contact@leblanc-simon.eu>
  *
@@ -8,8 +8,8 @@
  * file that was distributed with this source code.
  */
 
-namespace PhpTus\Exception;
+namespace \Exception;
 
-class Required extends \Exception 
+class Max extends \Exception 
 {
 }

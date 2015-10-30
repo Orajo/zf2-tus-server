@@ -17,7 +17,7 @@ Server Usage
  */
 public function uploadAction() {
   // Create and configure server
-  $server = new \PhpTus\Server('/path/to/save/file', 
+  $server = new \\Server('/path/to/save/file', 
                            $this->getRequest()
   );
 
@@ -41,7 +41,7 @@ Author
 
 Jaroslaw Wasilewski <orajo@windowslive.com>.
 
-This library is based on PhpTus library (https://github.com/leblanc-simon/php-tus) by Simon Leblanc <contact@leblanc-simon.eu>.
+This library is based on library (https://github.com/leblanc-simon/php-tus) by Simon Leblanc <contact@leblanc-simon.eu>.
 
 License
 -------

@@ -1,6 +1,6 @@
 <?php
 /**
- * This file is part of the PhpTus package.
+ * This file is part of the  package.
  *
  * (c) Simon Leblanc <contact@leblanc-simon.eu>
  *
@@ -8,7 +8,7 @@
  * file that was distributed with this source code.
  */
 
-namespace PhpTus;
+namespace ZfTusServer;
 
 use \Zend\Http\PhpEnvironment\Request as PhpRequest;
 use \Zend\Http\PhpEnvironment\Response as PhpResponse;
@@ -62,7 +62,7 @@ class Server
      *
      * @param   bool    $send                                   True to send the response, false to return the response
      * @return  void|Symfony\Component\HttpFoundation\Response  void if send = true else Response object
-     * @throws  \PhpTus\Exception\Request                       If the method isn't available
+     * @throws  \\Exception\Request                       If the method isn't available
      * @access  public
      */
     public function process($send = false)
@@ -186,9 +186,9 @@ class Server
      * Process the POST request
      *
      * @throws  \Exception                      If the uuid already exists
-     * @throws  \PhpTus\Exception\BadHeader     If the final length header isn't a positive integer
-     * @throws  \PhpTus\Exception\File          If the file already exists in the filesystem
-     * @throws  \PhpTus\Exception\File          If the creation of file failed
+     * @throws  \\Exception\BadHeader     If the final length header isn't a positive integer
+     * @throws  \\Exception\File          If the file already exists in the filesystem
+     * @throws  \\Exception\File          If the creation of file failed
      * @access  private
      */
     private function processPost()
@@ -250,14 +250,14 @@ class Server
      * Process the PATCH request
      *
      * @throws  \Exception                      If the uuid isn't know
-     * @throws  \PhpTus\Exception\BadHeader     If the Offset header isn't a positive integer
-     * @throws  \PhpTus\Exception\BadHeader     If the Content-Length header isn't a positive integer
-     * @throws  \PhpTus\Exception\BadHeader     If the Content-Type header isn't "application/offset+octet-stream"
-     * @throws  \PhpTus\Exception\BadHeader     If the Offset header and Offset Redis are not equal
-     * @throws  \PhpTus\Exception\Required      If the final length is smaller than offset
-     * @throws  \PhpTus\Exception\File          If it's impossible to open php://input
-     * @throws  \PhpTus\Exception\File          If it's impossible to open the destination file
-     * @throws  \PhpTus\Exception\File          If it's impossible to set the position in the destination file
+     * @throws  \\Exception\BadHeader     If the Offset header isn't a positive integer
+     * @throws  \\Exception\BadHeader     If the Content-Length header isn't a positive integer
+     * @throws  \\Exception\BadHeader     If the Content-Type header isn't "application/offset+octet-stream"
+     * @throws  \\Exception\BadHeader     If the Offset header and Offset Redis are not equal
+     * @throws  \\Exception\Required      If the final length is smaller than offset
+     * @throws  \\Exception\File          If it's impossible to open php://input
+     * @throws  \\Exception\File          If it's impossible to open the destination file
+     * @throws  \\Exception\File          If it's impossible to set the position in the destination file
      */
     private function processPatch()
     {
@@ -419,7 +419,7 @@ class Server
      * @param   array       $headers        A list of header name to extract
      * @return  array                       A list if header ([header name => header value])
      * @throws  \InvalidArgumentException   If headers isn't array
-     * @throws  \PhpTus\Exception\BadHeader If a header sought doesn't exist or are empty
+     * @throws  \\Exception\BadHeader If a header sought doesn't exist or are empty
      * @access  private
      */
     private function extractHeaders($headers)
@@ -456,9 +456,9 @@ class Server
      * Set the directory where the file will be store
      *
      * @param   string      $directory      The directory where the file are stored
-     * @return  \PhpTus\Server              The current Server instance
+     * @return  \\Server              The current Server instance
      * @throws  \InvalidArgumentException   If directory isn't string
-     * @throws  \PhpTus\Exception\File      If directory isn't writable
+     * @throws  \\Exception\File      If directory isn't writable
      * @access  private
      */
     private function setDirectory($directory)
