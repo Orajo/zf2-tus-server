@@ -85,7 +85,9 @@ class FileToolsService {
 				while(!feof($handle)) {
 					$buffer = fread($handle, $chunksize);
 					echo $buffer;
-					ob_flush();
+
+                    // if somewhare before was ob_start()
+					if (ob_get_level() > 0) ob_flush();
 					flush();
 				}
 				fclose($handle);

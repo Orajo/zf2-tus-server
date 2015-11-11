@@ -13,36 +13,29 @@
 
 namespace ZfTusServer;
 
-use \Zend\Http\PhpEnvironment\Request as PhpRequest;
-use \Zend\Http\PhpEnvironment\Response as PhpResponse;
+use Zend\Http\PhpEnvironment\Request as PhpRequest;
+use Zend\Http\PhpEnvironment\Response as PhpResponse;
 use Zend\Http\Headers;
-use Zend\Session\Container;
+use Zend\Json\Json;
 
 class Server {
 
     const TIMEOUT = 30;
-    const POST = 'POST';
-    const HEAD = 'HEAD';
-    const PATCH = 'PATCH';
-    const OPTIONS = 'OPTIONS';
-    const GET = 'GET';
-    const SESSION_CONTAINER = 'tus';
     const TUS_VERSION = '1.0.0';
 
     private $uuid = null;
-    private $directory = null;
-    private $host = null;
+    private $directory = '';
     private $realFileName = '';
     private $request = null;
     private $response = null;
+    private $allowGetMethod = true;
+    private $allowMaxSize = 2147483648; // 2GB
 
     /**
      *
      * @var Zend\Session\Container
      */
-    private $session = null;
-    private $allowGetMethod = true;
-    private $allowMaxSize = 2147483648; // 2GB
+    private $metaData = null;
 
     /**
      * Constructor
@@ -70,38 +63,37 @@ class Server {
 
             $method = $this->getRequest()->getMethod();
 
-            if ($this->getRequest()->isOptions()) {
-                $this->uuid = null;
-            } else {
-                if (!$this->getRequest()->isGet() && !$this->checkTusVersion()) {
-                    throw new Exception\Request('The requested protocol version is not supported', \Zend\Http\Response::STATUS_CODE_405);
-                }
-
-                if ($this->getRequest()->isPost()) {
-                    $this->buildUuid();
-                } else {
-                    $this->getUserUuid();
-                }
-            }
-
             switch ($method) {
-                case self::POST:
+                case 'POST':
+                    if(!$this->checkTusVersion()) {
+                        throw new Exception\Request('The requested protocol version is not supported', \Zend\Http\Response::STATUS_CODE_405);
+                    }
+                    $this->buildUuid();
                     $this->processPost();
                     break;
 
-                case self::HEAD:
+                case 'HEAD':
+                    if(!$this->checkTusVersion()) {
+                        throw new Exception\Request('The requested protocol version is not supported', \Zend\Http\Response::STATUS_CODE_405);
+                    }
+                    $this->getUserUuid();
                     $this->processHead();
                     break;
 
-                case self::PATCH:
+                case 'PATCH':
+                    if(!$this->checkTusVersion()) {
+                        throw new Exception\Request('The requested protocol version is not supported', \Zend\Http\Response::STATUS_CODE_405);
+                    }
+                    $this->getUserUuid();
                     $this->processPatch();
                     break;
 
-                case self::OPTIONS:
+                case 'OPTIONS':
                     $this->processOptions();
                     break;
 
-                case self::GET:
+                case 'GET':
+                    $this->getUserUuid();
                     $this->processGet($send);
                     break;
 
@@ -139,6 +131,7 @@ class Server {
 
             $this->getResponse()->setStatusCode(\Zend\Http\Response::STATUS_CODE_500)
                     ->setContent($e->getMessage());
+//            error_log(var_dump($e));
             $this->addCommonHeader();
         }
 
@@ -199,7 +192,8 @@ class Server {
      * @access  private
      */
     private function processPost() {
-        if ($this->existsInSession($this->uuid, 'UUID') === true) {
+
+        if ($this->existsInMetaData($this->uuid, 'ID') === true) {
             throw new \Exception('The UUID already exists');
         }
 
@@ -223,12 +217,9 @@ class Server {
             throw new Exception\File('Impossible to touch ' . $file);
         }
 
-        $this->writeFileMeta($final_length, 0, false, true);
 
-        $this->setSessionData($this->uuid, 'Upload-Length', $final_length);
-        $this->setSessionData($this->uuid, 'Upload-Offset', 0);
-        $this->setSessionData($this->uuid, 'UUID', $this->uuid);
-        $this->setSessionData($this->uuid, 'Upload-Filename', $this->realFileName);
+        $this->setMetaDataValue($this->uuid, 'ID', $this->uuid);
+        $this->saveMetaData($final_length, 0, false, true);
 
         $this->getResponse()->setStatusCode(201);
 
@@ -246,18 +237,20 @@ class Server {
      * @access private
      */
     private function processHead() {
-        if ($this->existsInSession($this->uuid, 'UUID') === false) {
-            throw new \Exception('The UUID doesn\'t exists');
+        if ($this->existsInMetaData($this->uuid, 'ID') === false) {
+            $this->getResponse()->setStatusCode(PhpResponse::STATUS_CODE_404);
+            return;
         }
 
         // is file in storage exists?
         if (!file_exists($this->directory . $this->getFilename())) {
             // if not - allow new upload
-            $this->removeFromSession($this->uuid, 'UUID');
-            throw new \Exception('The UUID doesn\'t exists');
+            $this->removeFromMetaData($this->uuid);
+            $this->getResponse()->setStatusCode(PhpResponse::STATUS_CODE_404);
+            return;
         }
 
-        $offset = $this->getSessionValue($this->uuid, 'Upload-Offset');
+        $offset = $this->getMetaDataValue($this->uuid, 'Offset');
 
         $this->getResponse()->setStatusCode(PhpResponse::STATUS_CODE_200);
         $this->getResponse()->setHeaders((new Headers())->addHeaderLine('Upload-Offset', $offset));
@@ -278,7 +271,7 @@ class Server {
      */
     private function processPatch() {
         // Check the uuid
-        if ($this->existsInSession($this->uuid, 'UUID') === false) {
+        if ($this->existsInMetaData($this->uuid, 'ID') === false) {
             throw new \Exception('The UUID doesn\'t exists');
         }
 
@@ -299,18 +292,24 @@ class Server {
 
         // Initialize vars
         $offset_header = (int) $headers['Upload-Offset'];
-        $offset_session = $this->getSessionValue($this->uuid, 'Upload-Offset');
-        $max_length = $content_length = (int) $headers['Content-Length'];
-        $this->setRealFileName($this->getSessionValue($this->uuid, 'Upload-Filename'));
+        $offset_session = (int) $this->getMetaDataValue($this->uuid, 'Offset');
+        $length_session = (int) $this->getMetaDataValue($this->uuid, 'Size');
+        $content_length = (int) $headers['Content-Length'];
+        if ($content_length < $length_session) {
+            $content_length = $length_session;
+        }
+        $this->setRealFileName($this->getMetaDataValue($this->uuid, 'FileName'));
 
         // Check consistency (user vars vs database vars)
-        if ($offset_session === null || (int) $offset_session !== $offset_header) {
+        if ($offset_session === null || $offset_session !== $offset_header) {
             throw new Exception\BadHeader('Upload-Offset header isn\'t the same as in Redis');
         }
 
         // Check if the file isn't already entirely write
-        if ((int) $offset_session === (int) $max_length) {
-            $this->getResponse()->setStatusCode(200);
+        if ($offset_session === $content_length || $content_length === 0) {
+            // the whole file was uploaded
+            $this->getResponse()->setStatusCode(PhpResponse::STATUS_CODE_200);
+            $this->getResponse()->setHeaders((new Headers())->addHeaderLine('Upload-Offset', $offset_session));
             return;
         }
 
@@ -330,7 +329,7 @@ class Server {
             throw new Exception\File('Impossible to move pointer in the good position');
         }
 
-        ignore_user_abort(true);
+        ignore_user_abort(false);
 
         $current_size = (int) $offset_session;
         $total_write = 0;
@@ -352,7 +351,7 @@ class Server {
                 $size_read = strlen($data);
 
                 // If user sent more datas than expected (by POST Final-Length), abort
-                if ($size_read + $current_size > $max_length) {
+                if ($size_read + $current_size > $content_length) {
                     throw new Exception\Max('Size sent is greather than max length expected');
                 }
 
@@ -370,29 +369,29 @@ class Server {
 
                 $current_size += $size_write;
                 $total_write += $size_write;
-                $this->setSessionData($this->uuid, 'Upload-Offset', $current_size);
+                $this->setMetaDataValue($this->uuid, 'Offset', $current_size);
 
                 if ($total_write === $content_length) {
                     fclose($handle_input);
                     fclose($handle_output);
-                    $this->writeFileMeta($content_length, $current_size, true, false);
+                    $this->saveMetaData($content_length, $current_size, true, false);
                     break;
                 } else {
-                    $this->writeFileMeta($content_length, $current_size, false, true);
+                    $this->saveMetaData($content_length, $current_size, false, true);
                 }
             }
         } catch (Exception\Max $e) {
             fclose($handle_input);
             fclose($handle_output);
-            $this->getResponse()->setStatusCode(PhpResponse::STATUS_CODE_400);
+            return $this->getResponse()->setStatusCode(PhpResponse::STATUS_CODE_400);
         } catch (Exception\File $e) {
             fclose($handle_input);
             fclose($handle_output);
-            $this->getResponse()->setStatusCode(PhpResponse::STATUS_CODE_500);
+            return $this->getResponse()->setStatusCode(PhpResponse::STATUS_CODE_500);
         } catch (Exception\Abort $e) {
             fclose($handle_input);
             fclose($handle_output);
-            $this->getResponse()->setStatusCode(PhpResponse::STATUS_CODE_100);
+            return $this->getResponse()->setStatusCode(PhpResponse::STATUS_CODE_100);
         }
 
         $this->getResponse()->setStatusCode(PhpResponse::STATUS_CODE_200);
@@ -405,6 +404,7 @@ class Server {
      * @access  private
      */
     private function processOptions() {
+        $this->uuid = null;
         $this->getResponse()->getStatusCode(200);
     }
 
@@ -432,11 +432,9 @@ class Server {
             throw new Exception\Request('The file ' . $this->uuid . ' has no metadata', 500);
         }
 
-        $json = file_get_contents($file . '.info');
-        $data = json_decode($json, true);
-
+        $fileName = $this->getMetaDataValue($file, 'FileName');
         $mime = FileToolsService::detectMimeType($file);
-        FileToolsService::downloadFile($file, $data['MetaData']['filename'], $mime);
+        FileToolsService::downloadFile($file, $fileName, $mime);
         exit;
     }
 
@@ -508,36 +506,6 @@ class Server {
     }
 
     /**
-     * Saves metadata about uploaded file.
-     * Metadata are saved into a file with name mask 'uuid'.info
-     *
-     * @param int $size
-     * @param int $offset
-     * @param bool $isFinal
-     * @param bool $isPartial
-     */
-    private function writeFileMeta($size, $offset = 0, $isFinal = false, $isPartial = false) {
-        $info = new \SplFileInfo($this->getRealFileName());
-        $ext = $info->getExtension();
-
-        $meta = [
-            'ID' => $this->getUserUuid(),
-            'Size' => $size,
-            'Offset' => $offset,
-            'MetaData' => [
-                'extension' => $ext,
-                'filename' => $this->getRealFileName(),
-                'IsPartial' => (bool) $isPartial,
-                'IsFinal' => (bool) $isFinal,
-                'PartialUploads' => null,
-            ]
-        ];
-
-        $json = json_encode($meta);
-        file_put_contents($this->directory . $this->getUserUuid() . '.info', $json);
-    }
-
-    /**
      * Set the directory where the file will be store
      *
      * @param string $directory The directory where the file are stored
@@ -566,13 +534,13 @@ class Server {
      * @return  \Zend\Session\Container
      * @access  private
      */
-    private function getSessionData() {
+    private function getMetaData() {
 
-        if ($this->session === null) {
-            $this->session = new \Zend\Session\Container(self::SESSION_CONTAINER);
+        if ($this->metaData === null) {
+            $this->metaData = $this->readMetaData($this->getUserUuid());
         }
 
-        return $this->session;
+        return $this->metaData;
     }
 
     /**
@@ -581,32 +549,34 @@ class Server {
      * @param   string      $id     The id to use to set the value (an id can have multiple key)
      * @param   string      $key    The key for wich you want set the value
      * @param   mixed       $value  The value for the id-key to save
+     * @return void
      * @access  private
      */
-    private function setSessionData($id, $key, $value) {
-        $this->getSessionData()->offsetSet(self::getSessionKey($id, $key), $value);
+    private function setMetaDataValue($id, $key, $value) {
+        $data = $this->getMetaData($id);
+        if (isset($data[$key])) {
+            $data[$key] = $value;
+        }
+        else {
+            throw new \Exception($key . ' is not defined in medatada');
+        }
     }
 
     /**
      * Get a value from session
      *
-     * @param   string      $id     The id to use to get the value (an id can have multiple key)
-     * @param   string      $key    The key for wich you want value
-     * @return  mixed               The value for the id-key
-     * @access  private
+     * @param string $id The id to use to get the value (an id can have multiple key)
+     * @param string $key The key for wich you want value
+     * @return mixed The value for the id-key
+     * @throws \Exception key is not defined in medatada
+     * @access private
      */
-    private function getSessionValue($id, $key) {
-        return $this->getSessionData()->offsetGet(self::getSessionKey($id, $key));
-    }
-
-    /**
-     * Creates unique key form data in session
-     * @param string $id
-     * @param string $key
-     * @return string
-     */
-    private static function getSessionKey($id, $key) {
-        return $id . '_' . $key;
+    private function getMetaDataValue($id, $key) {
+        $data = $this->getMetaData($id);
+        if (isset($data[$key])) {
+            return $data[$key];
+        }
+        throw new \Exception($key . ' is not defined in medatada');
     }
 
     /**
@@ -616,8 +586,9 @@ class Server {
      * @return bool True if the id exists, false else
      * @access private
      */
-    private function existsInSession($id, $key = 'UUID') {
-        return $this->getSessionData()->offsetExists(self::getSessionKey($id, $key));
+    private function existsInMetaData($id, $key) {
+        $data = $this->getMetaData($id);
+        return isset($data[$key]) && !empty($data[$key]);
     }
 
     /**
@@ -627,8 +598,74 @@ class Server {
      * @return void
      * @access private
      */
-    private function removeFromSession($id, $key = 'UUID') {
-        $this->getSessionData()->offsetUnset(self::getSessionKey($id, $key));
+    private function removeFromMetaData($id) {
+        $storageFileName = $this->directory . $id . '.info';
+        if (file_exists($storageFileName) && is_writable($storageFileName)) {
+            unset($storageFileName);
+            return true;
+        }
+        return false;
+    }
+
+
+    /**
+     * Saves metadata about uploaded file.
+     * Metadata are saved into a file with name mask 'uuid'.info
+     *
+     * @param int $size
+     * @param int $offset
+     * @param bool $isFinal
+     * @param bool $isPartial
+     */
+    private function saveMetaData($size, $offset = 0, $isFinal = false, $isPartial = false) {
+        $this->setMetaDataValue($this->getUserUuid(), 'ID', $this->getUserUuid());
+        $this->metaData['ID'] = $this->getUserUuid();
+        $this->metaData['Offset'] = $offset;
+        $this->metaData['IsPartial'] = (bool) $isPartial;
+        $this->metaData['IsFinal'] = (bool) $isFinal;
+
+        if ($this->metaData['Size'] === 0) {
+            $this->metaData['Size'] = $size;
+        }
+
+        if (empty($this->metaData['FileName'])) {
+            $this->metaData['FileName'] = $this->getRealFileName();
+            $info = new \SplFileInfo($this->getRealFileName());
+            $ext = $info->getExtension();
+            $this->metaData['Extension'] = $ext;
+        }
+
+        $json = Json::encode($this->metaData);
+        file_put_contents($this->directory . $this->getUserUuid() . '.info', $json);
+    }
+
+    /**
+     * Reads or initialize metadata about file.
+     *
+     * @param string $name
+     * @return array
+     */
+    private function readMetaData($name) {
+        $refData = [
+            'ID' => '',
+            'Size' => 0,
+            'Offset' => 0,
+            'Extension' => '',
+            'FileName' => '',
+            'IsPartial' => true,
+            'IsFinal' => false,
+            'PartialUploads' => null, // unused
+        ];
+
+        $storageFileName = $this->directory . $name . '.info';
+        if (file_exists($storageFileName)) {
+            $json = file_get_contents($storageFileName);
+            $data = Json::decode($json, Json::TYPE_ARRAY);
+            if (is_array($data)) {
+                return array_merge($refData, $data);
+            }
+        }
+        return $refData;
     }
 
     /**
@@ -689,7 +726,7 @@ class Server {
      */
     private function setRealFileName($value) {
         $base64FileNamePos = strpos($value, 'filename ');
-        if ($base64FileNamePos !== false) {
+        if (is_int($base64FileNamePos) && $base64FileNamePos >= 0) {
             $value = substr($value, $base64FileNamePos + 9); // 9 - length of 'filename '
             $this->realFileName = base64_decode($value);
         } else {
