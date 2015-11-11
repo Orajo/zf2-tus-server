@@ -1,7 +1,10 @@
 <?php
+
 /**
  * This file is part of the  package.
  *
+ * (c) Jarosław Wasilewski <orajo@windowslive.com>
+ * based on PhpTus by
  * (c) Simon Leblanc <contact@leblanc-simon.eu>
  *
  * For the full copyright and license information, please view the LICENSE
@@ -15,33 +18,31 @@ use \Zend\Http\PhpEnvironment\Response as PhpResponse;
 use Zend\Http\Headers;
 use Zend\Session\Container;
 
-class Server
-{
+class Server {
+
     const TIMEOUT = 30;
-
-    const POST      = 'POST';
-    const HEAD      = 'HEAD';
-    const PATCH     = 'PATCH';
-    const OPTIONS   = 'OPTIONS';
-    const GET       = 'GET';
-
+    const POST = 'POST';
+    const HEAD = 'HEAD';
+    const PATCH = 'PATCH';
+    const OPTIONS = 'OPTIONS';
+    const GET = 'GET';
     const SESSION_CONTAINER = 'tus';
-
     const TUS_VERSION = '1.0.0';
 
-    private $uuid       = null;
-    private $directory  = null;
-    private $host       = null;
-
-    private $request    = null;
-    private $response   = null;
+    private $uuid = null;
+    private $directory = null;
+    private $host = null;
+    private $realFileName = '';
+    private $request = null;
+    private $response = null;
 
     /**
      *
      * @var Zend\Session\Container
      */
-    private $session    = null;
-
+    private $session = null;
+    private $allowGetMethod = true;
+    private $allowMaxSize = 2147483648; // 2GB
 
     /**
      * Constructor
@@ -50,36 +51,37 @@ class Server
      * @param   null|array  $redis_options  Override the default Redis options
      * @access  public
      */
-    public function __construct($directory, \Zend\Http\PhpEnvironment\Request $request)
-    {
+
+    public function __construct($directory, \Zend\Http\PhpEnvironment\Request $request) {
         $this->setDirectory($directory);
         $this->request = $request;
     }
 
-
     /**
      * Process the client request
      *
-     * @param   bool    $send                                   True to send the response, false to return the response
-     * @return  void|Symfony\Component\HttpFoundation\Response  void if send = true else Response object
-     * @throws  \\Exception\Request                       If the method isn't available
-     * @access  public
+     * @param bool $send True to send the response, false to return the response
+     * @return void|Symfony\Component\HttpFoundation\Response  void if send = true else Response object
+     * @throws \\Exception\Request If the method isn't available
+     * @access public
      */
-    public function process($send = false)
-    {
+    public function process($send = false) {
         try {
-            if(!$this->checkTusVersion()) {
-                throw new Exception\Request('The requested protocol verison is not supported', \Zend\Http\Response::STATUS_CODE_405);
-            }
 
             $method = $this->getRequest()->getMethod();
 
             if ($this->getRequest()->isOptions()) {
                 $this->uuid = null;
-            } elseif ($this->getRequest()->isPost()) {
-                $this->buildUuid();
             } else {
-                $this->getUserUuid();
+                if (!$this->getRequest()->isGet() && !$this->checkTusVersion()) {
+                    throw new Exception\Request('The requested protocol version is not supported', \Zend\Http\Response::STATUS_CODE_405);
+                }
+
+                if ($this->getRequest()->isPost()) {
+                    $this->buildUuid();
+                } else {
+                    $this->getUserUuid();
+                }
             }
 
             switch ($method) {
@@ -98,28 +100,30 @@ class Server
                 case self::OPTIONS:
                     $this->processOptions();
                     break;
-//
-//                case self::GET:
-//                    $this->processGet($send);
-//                    break;
+
+                case self::GET:
+                    $this->processGet($send);
+                    break;
 
                 default:
-                    throw new Exception\Request('The requested method '.$method.' is not allowed', \Zend\Http\Response::STATUS_CODE_405);
+                    throw new Exception\Request('The requested method ' . $method . ' is not allowed', \Zend\Http\Response::STATUS_CODE_405);
             }
 
-            $this->addCommonHeader();
+            $this->addCommonHeader($this->getRequest()->isOptions());
 
             if ($send === false) {
                 return $this->response;
             }
-        } catch (Exception\BadHeader $e) {
+        }
+        catch (Exception\BadHeader $e) {
             if ($send === false) {
                 throw $e;
             }
 
             $this->getResponse()->setStatusCode(\Zend\Http\Response::STATUS_CODE_400);
             $this->addCommonHeader();
-        } catch (Exception\Request $e) {
+        }
+        catch (Exception\Request $e) {
             if ($send === false) {
                 throw $e;
             }
@@ -127,60 +131,63 @@ class Server
             $this->getResponse()->setStatusCode($e->getCode())
                     ->setContent($e->getMessage());
             $this->addCommonHeader(true);
-        } catch (\Exception $e) {
+        }
+        catch (\Exception $e) {
             if ($send === false) {
                 throw $e;
             }
 
-            $this->getResponse()->setStatusCode(\Zend\Http\Response::STATUS_CODE_500);
+            $this->getResponse()->setStatusCode(\Zend\Http\Response::STATUS_CODE_500)
+                    ->setContent($e->getMessage());
             $this->addCommonHeader();
         }
 
         $this->getResponse()->sendHeaders();
+        $this->getResponse()->sendContent();
 
-        // The process must only sent the HTTP headers : kill request after send
+        // The process must only sent the HTTP headers and content: kill request after send
         exit;
     }
 
+    /**
+     * Checks compatibility with requested Tus protocol
+     *
+     * @return boolean
+     */
     private function checkTusVersion() {
         $tusVersion = $this->getRequest()->getHeader('Tus-Resumable');
         if ($tusVersion instanceof \Zend\Http\Header\HeaderInterface) {
-            return $tusVersion->getFieldValue()  === self::TUS_VERSION;
+            return $tusVersion->getFieldValue() === self::TUS_VERSION;
         }
         return false;
     }
-
 
     /**
      * Build a new UUID (use in the POST request)
      *
      * @access  private
      */
-    private function buildUuid()
-    {
-        $this->uuid = hash('md5', uniqid(mt_rand().php_uname(), true));
+    private function buildUuid() {
+        $this->uuid = hash('md5', uniqid(mt_rand() . php_uname(), true));
     }
-
 
     /**
      * Get the UUID of the request (use for HEAD and PATCH request)
      *
-     * @return  string                      The UUID of the request
-     * @throws  \InvalidArgumentException   If the UUID is empty
-     * @access  private
+     * @return string The UUID of the request
+     * @throws \InvalidArgumentException If the UUID is empty
+     * @access private
      */
-    private function getUserUuid()
-    {
+    private function getUserUuid() {
         if ($this->uuid === null) {
-           $uuid = $this->getRequest()->getQuery('uuid');
+            $uuid = $this->getRequest()->getQuery('uuid');
             if (empty($uuid)) {
-                throw new \InvalidArgumentException('The uuid cannot be empty: ');
+                throw new \InvalidArgumentException('The uuid cannot be empty.');
             }
             $this->uuid = $uuid;
         }
         return $this->uuid;
     }
-
 
     /**
      * Process the POST request
@@ -191,51 +198,62 @@ class Server
      * @throws  \ZfTusServer\Exception\File          If the creation of file failed
      * @access  private
      */
-    private function processPost()
-    {
-        if ($this->existsInSession($this->uuid) === true) {
+    private function processPost() {
+        if ($this->existsInSession($this->uuid, 'UUID') === true) {
             throw new \Exception('The UUID already exists');
         }
 
-        $headers = $this->extractHeaders(array('Upload-Length'));
+        $headers = $this->extractHeaders(array('Upload-Length', 'Upload-Metadata'));
 
         if (is_numeric($headers['Upload-Length']) === false || $headers['Upload-Length'] < 0) {
             throw new Exception\BadHeader('Upload-Length must be a positive integer');
         }
 
-        $final_length = (int)$headers['Upload-Length'];
+        $final_length = (int) $headers['Upload-Length'];
 
-        $file = $this->directory.$this->getFilename();
+        $this->setRealFileName($headers['Upload-Metadata']);
+
+        $file = $this->directory . $this->getFilename();
 
         if (file_exists($file) === true) {
-            throw new Exception\File('File already exists : '.$file);
+            throw new Exception\File('File already exists : ' . $file);
         }
 
         if (touch($file) === false) {
-            throw new Exception\File('Impossible to touch '.$file);
+            throw new Exception\File('Impossible to touch ' . $file);
         }
+
+        $this->writeFileMeta($final_length, 0, false, true);
 
         $this->setSessionData($this->uuid, 'Upload-Length', $final_length);
         $this->setSessionData($this->uuid, 'Upload-Offset', 0);
         $this->setSessionData($this->uuid, 'UUID', $this->uuid);
+        $this->setSessionData($this->uuid, 'Upload-Filename', $this->realFileName);
 
         $this->getResponse()->setStatusCode(201);
-        $this->getResponse()->setHeaders(
-                (new \Zend\Http\Headers())->addHeaderLine('Location',
-                         $this->getRequest()->getRequestUri().'?uuid='.$this->uuid)
-                );
-    }
 
+        $uri = $this->getRequest()->getUri();
+        $this->getResponse()->setHeaders(
+                (new \Zend\Http\Headers())->addHeaderLine('Location', $uri->getScheme() . '://' . $uri->getHost() . $uri->getPath() . '?uuid=' . $this->uuid)
+        );
+        unset($uri);
+    }
 
     /**
      * Process the HEAD request
      *
-     * @throws  \Exception      If the uuid isn't know
-     * @access  private
+     * @throws \Exception If the uuid isn't know
+     * @access private
      */
-    private function processHead()
-    {
+    private function processHead() {
         if ($this->existsInSession($this->uuid, 'UUID') === false) {
+            throw new \Exception('The UUID doesn\'t exists');
+        }
+
+        // is file in storage exists?
+        if (!file_exists($this->directory . $this->getFilename())) {
+            // if not - allow new upload
+            $this->removeFromSession($this->uuid, 'UUID');
             throw new \Exception('The UUID doesn\'t exists');
         }
 
@@ -245,22 +263,20 @@ class Server
         $this->getResponse()->setHeaders((new Headers())->addHeaderLine('Upload-Offset', $offset));
     }
 
-
     /**
      * Process the PATCH request
      *
-     * @throws  \Exception                      If the uuid isn't know
-     * @throws  \ZfTusServer\Exception\BadHeader     If the Offset header isn't a positive integer
-     * @throws  \ZfTusServer\Exception\BadHeader     If the Content-Length header isn't a positive integer
-     * @throws  \ZfTusServer\Exception\BadHeader     If the Content-Type header isn't "application/offset+octet-stream"
-     * @throws  \ZfTusServer\Exception\BadHeader     If the Offset header and Offset Redis are not equal
-     * @throws  \ZfTusServer\Exception\Required      If the final length is smaller than offset
-     * @throws  \ZfTusServer\Exception\File          If it's impossible to open php://input
-     * @throws  \ZfTusServer\Exception\File          If it's impossible to open the destination file
-     * @throws  \ZfTusServer\Exception\File          If it's impossible to set the position in the destination file
+     * @throws \Exception If the uuid isn't know
+     * @throws \ZfTusServer\Exception\BadHeader If the Upload-Offset header isn't a positive integer
+     * @throws \ZfTusServer\Exception\BadHeader If the Content-Length header isn't a positive integer
+     * @throws \ZfTusServer\Exception\BadHeader If the Content-Type header isn't "application/offset+octet-stream"
+     * @throws \ZfTusServer\Exception\BadHeader If the Upload-Offset header and session offset are not equal
+     * @throws \ZfTusServer\Exception\Required If the final length is smaller than offset
+     * @throws \ZfTusServer\Exception\File If it's impossible to open php://input
+     * @throws \ZfTusServer\Exception\File If it's impossible to open the destination file
+     * @throws \ZfTusServer\Exception\File If it's impossible to set the position in the destination file
      */
-    private function processPatch()
-    {
+    private function processPatch() {
         // Check the uuid
         if ($this->existsInSession($this->uuid, 'UUID') === false) {
             throw new \Exception('The UUID doesn\'t exists');
@@ -282,17 +298,18 @@ class Server
         }
 
         // Initialize vars
-        $offset_header = (int)$headers['Upload-Offset'];
-        $offset_redis = $this->getSessionValue($this->uuid, 'Upload-Offset');
-        $max_length = $content_length = (int)$headers['Content-Length'];
+        $offset_header = (int) $headers['Upload-Offset'];
+        $offset_session = $this->getSessionValue($this->uuid, 'Upload-Offset');
+        $max_length = $content_length = (int) $headers['Content-Length'];
+        $this->setRealFileName($this->getSessionValue($this->uuid, 'Upload-Filename'));
 
         // Check consistency (user vars vs database vars)
-        if ($offset_redis === null || (int)$offset_redis !== $offset_header) {
+        if ($offset_session === null || (int) $offset_session !== $offset_header) {
             throw new Exception\BadHeader('Upload-Offset header isn\'t the same as in Redis');
         }
 
         // Check if the file isn't already entirely write
-        if ((int)$offset_redis === (int)$max_length) {
+        if ((int) $offset_session === (int) $max_length) {
             $this->getResponse()->setStatusCode(200);
             return;
         }
@@ -303,19 +320,19 @@ class Server
             throw new Exception\File('Impossible to open php://input');
         }
 
-        $file = $this->directory.$this->getFilename();
+        $file = $this->directory . $this->getFilename();
         $handle_output = fopen($file, 'ab');
         if ($handle_output === false) {
             throw new Exception\File('Impossible to open file to write into');
         }
 
-        if (fseek($handle_output, (int)$offset_redis) === false) {
+        if (fseek($handle_output, (int) $offset_session) === false) {
             throw new Exception\File('Impossible to move pointer in the good position');
         }
 
         ignore_user_abort(true);
 
-        $current_size = (int)$offset_redis;
+        $current_size = (int) $offset_session;
         $total_write = 0;
 
         try {
@@ -323,7 +340,7 @@ class Server
                 set_time_limit(self::TIMEOUT);
 
                 // Manage user abort
-                if(connection_status() != CONNECTION_NORMAL) {
+                if (connection_status() != CONNECTION_NORMAL) {
                     throw new Exception\Abort('User abort connexion');
                 }
 
@@ -358,7 +375,10 @@ class Server
                 if ($total_write === $content_length) {
                     fclose($handle_input);
                     fclose($handle_output);
+                    $this->writeFileMeta($content_length, $current_size, true, false);
                     break;
+                } else {
+                    $this->writeFileMeta($content_length, $current_size, false, true);
                 }
             }
         } catch (Exception\Max $e) {
@@ -379,51 +399,87 @@ class Server
         $this->getResponse()->setHeaders((new Headers())->addHeaderLine('Upload-Offset', $current_size));
     }
 
-
     /**
      * Process the OPTIONS request
      *
      * @access  private
      */
-    private function processOptions()
-    {
+    private function processOptions() {
         $this->getResponse()->getStatusCode(200);
+    }
+
+    /**
+     * Process the GET request
+     *
+     * FIXME: check and eventually remove $send param
+     * @param bool $send Description
+     * @access  private
+     */
+    private function processGet($send) {
+        if (!$this->allowGetMethod) {
+            throw new Exception\Request('The requested method ' . $method . ' is not allowed', \Zend\Http\Response::STATUS_CODE_405);
+        }
+        $file = $this->directory . $this->getFilename();
+        if (!file_exists($file)) {
+            throw new Exception\Request('The file ' . $this->uuid . ' doesn\'t exist', 404);
+        }
+
+        if (!is_readable($file)) {
+            throw new Exception\Request('The file ' . $this->uuid . ' is unaccessible', 403);
+        }
+
+        if (!file_exists($file . '.info') || !is_readable($file . '.info')) {
+            throw new Exception\Request('The file ' . $this->uuid . ' has no metadata', 500);
+        }
+
+        $json = file_get_contents($file . '.info');
+        $data = json_decode($json, true);
+
+        $mime = FileToolsService::detectMimeType($file);
+        FileToolsService::downloadFile($file, $data['MetaData']['filename'], $mime);
+        exit;
     }
 
     /**
      * Add the commons headers to the HTTP response
      *
-     * @access  private
+     * @param bool $isOption Is OPTION request
+     * @access private
      */
-    private function addCommonHeader($isOption = false)
-    {
+    private function addCommonHeader($isOption = false) {
         $headers = $this->getResponse()->getHeaders();
         $headers->addHeaderLine('Tus-Resumable', self::TUS_VERSION);
+        $headers->addHeaderLine('Access-Control-Allow-Origin', '*');
+        $headers->addHeaderLine('Access-Control-Expose-Headers', 'Upload-Offset, Location, Upload-Length, Tus-Version, Tus-Resumable, Tus-Max-Size, Tus-Extension, Upload-Metadata');
 
         if ($isOption) {
+            $allowedMethods = 'OPTIONS,HEAD,POST,PATCH';
+            if ($this->getAllowGetMethod()) {
+                $allowedMethods .= ',GET';
+            }
+
             $headers->addHeaders([
-                'Allow' => 'OPTIONS,HEAD,POST,PATCH',
-                'Access-Control-Allow-Methods' => 'OPTIONS,HEAD,POST,PATCH',
-                'Access-Control-Allow-Origin' => '*',
-                'Access-Control-Allow-Headers' => 'Origin, X-Requested-With, Content-Type, Accept, Final-Length, Offset',
-                'Access-Control-Expose-Headers' => 'Location, Range, Content-Disposition, Upload-Offset',
+                'Tus-Version' => self::TUS_VERSION,
+                'Tus-Extension' => '',
+                'Tus-Max-Size' => $this->allowMaxSize,
+                'Allow' => $allowedMethods,
+                'Access-Control-Allow-Methods' => $allowedMethods,
+                'Access-Control-Allow-Headers' => 'Origin, X-Requested-With, Content-Type, Accept, Final-Length, Upload-Offset, Upload-Length, Tus-Resumable, Upload-Metadata',
             ]);
         }
         return $this->response->setHeaders($headers);
     }
 
-
     /**
      * Extract a list of headers in the HTTP headers
      *
-     * @param   array       $headers        A list of header name to extract
-     * @return  array                       A list if header ([header name => header value])
-     * @throws  \InvalidArgumentException   If headers isn't array
-     * @throws  \\Exception\BadHeader If a header sought doesn't exist or are empty
-     * @access  private
+     * @param array $headers A list of header name to extract
+     * @return array A list if header ([header name => header value])
+     * @throws \InvalidArgumentException If headers isn't array
+     * @throws \\Exception\BadHeader If a header sought doesn't exist or are empty
+     * @access private
      */
-    private function extractHeaders($headers)
-    {
+    private function extractHeaders($headers) {
         if (is_array($headers) === false) {
             throw new \InvalidArgumentException('Headers must be an array');
         }
@@ -441,7 +497,7 @@ class Server
                 }
 
                 if (trim($value) === '') {
-                    throw new Exception\BadHeader($headerName.' can\'t be empty');
+                    throw new Exception\BadHeader($headerName . ' can\'t be empty');
                 }
 
                 $headers_values[$headerName] = $value;
@@ -451,27 +507,55 @@ class Server
         return $headers_values;
     }
 
+    /**
+     * Saves metadata about uploaded file.
+     * Metadata are saved into a file with name mask 'uuid'.info
+     *
+     * @param int $size
+     * @param int $offset
+     * @param bool $isFinal
+     * @param bool $isPartial
+     */
+    private function writeFileMeta($size, $offset = 0, $isFinal = false, $isPartial = false) {
+        $info = new \SplFileInfo($this->getRealFileName());
+        $ext = $info->getExtension();
+
+        $meta = [
+            'ID' => $this->getUserUuid(),
+            'Size' => $size,
+            'Offset' => $offset,
+            'MetaData' => [
+                'extension' => $ext,
+                'filename' => $this->getRealFileName(),
+                'IsPartial' => (bool) $isPartial,
+                'IsFinal' => (bool) $isFinal,
+                'PartialUploads' => null,
+            ]
+        ];
+
+        $json = json_encode($meta);
+        file_put_contents($this->directory . $this->getUserUuid() . '.info', $json);
+    }
 
     /**
      * Set the directory where the file will be store
      *
-     * @param   string      $directory      The directory where the file are stored
-     * @return  \\Server              The current Server instance
-     * @throws  \InvalidArgumentException   If directory isn't string
-     * @throws  \\Exception\File      If directory isn't writable
-     * @access  private
+     * @param string $directory The directory where the file are stored
+     * @return \\Server The current Server instance
+     * @throws \InvalidArgumentException If directory isn't string
+     * @throws \\Exception\File If directory isn't writable
+     * @access private
      */
-    private function setDirectory($directory)
-    {
+    private function setDirectory($directory) {
         if (is_string($directory) === false) {
             throw new \InvalidArgumentException('Directory must be a string');
         }
 
         if (is_dir($directory) === false || is_writable($directory) === false) {
-            throw new Exception\File($directory.' doesn\'t exist or isn\'t writable');
+            throw new Exception\File($directory . ' doesn\'t exist or isn\'t writable');
         }
 
-        $this->directory = $directory.(substr($directory, -1) !== DIRECTORY_SEPARATOR ? DIRECTORY_SEPARATOR : '');
+        $this->directory = $directory . (substr($directory, -1) !== DIRECTORY_SEPARATOR ? DIRECTORY_SEPARATOR : '');
 
         return $this;
     }
@@ -482,8 +566,7 @@ class Server
      * @return  \Zend\Session\Container
      * @access  private
      */
-    private function getSessionData()
-    {
+    private function getSessionData() {
 
         if ($this->session === null) {
             $this->session = new \Zend\Session\Container(self::SESSION_CONTAINER);
@@ -491,7 +574,6 @@ class Server
 
         return $this->session;
     }
-
 
     /**
      * Set a value in the Redis database
@@ -501,85 +583,153 @@ class Server
      * @param   mixed       $value  The value for the id-key to save
      * @access  private
      */
-    private function setSessionData($id, $key, $value)
-    {
+    private function setSessionData($id, $key, $value) {
         $this->getSessionData()->offsetSet(self::getSessionKey($id, $key), $value);
     }
 
-
     /**
-     * Get a value in the Redis database
+     * Get a value from session
      *
      * @param   string      $id     The id to use to get the value (an id can have multiple key)
      * @param   string      $key    The key for wich you want value
      * @return  mixed               The value for the id-key
      * @access  private
      */
-    private function getSessionValue($id, $key)
-    {
+    private function getSessionValue($id, $key) {
         return $this->getSessionData()->offsetGet(self::getSessionKey($id, $key));
     }
 
+    /**
+     * Creates unique key form data in session
+     * @param string $id
+     * @param string $key
+     * @return string
+     */
     private static function getSessionKey($id, $key) {
-        return $id . '_'. $key;
+        return $id . '_' . $key;
     }
 
-
     /**
-     * Check if an id exists in the Redis database
-     * FIXME: w sesji to ma być id i key
+     * Check if $key an $id exists in the session
      *
-     * @param   string      $id     The id to test
-     * @return  bool                True if the id exists, false else
-     * @access  private
+     * @param string $id The id to test
+     * @return bool True if the id exists, false else
+     * @access private
      */
-    private function existsInSession($id, $key = 'UUID')
-    {
+    private function existsInSession($id, $key = 'UUID') {
         return $this->getSessionData()->offsetExists(self::getSessionKey($id, $key));
     }
 
+    /**
+     * Remove selected $id from database
+     *
+     * @param string $id The id to test
+     * @return void
+     * @access private
+     */
+    private function removeFromSession($id, $key = 'UUID') {
+        $this->getSessionData()->offsetUnset(self::getSessionKey($id, $key));
+    }
 
     /**
      * Get the filename to use when save the uploaded file
      *
-     * @return  string              The filename to use
-     * @throws  \DomainException    If the uuid isn't define
-     * @access  private
+     * @return string  The filename to use
+     * @throws \DomainException If the uuid isn't define
+     * @access private
      */
-    private function getFilename()
-    {
+    private function getFilename() {
         if ($this->uuid === null) {
-            throw new \DomainException('Uuid can\'t be null when call '.__METHOD__);
+            throw new \DomainException('Uuid can\'t be null when call ' . __METHOD__);
         }
 
         return $this->uuid;
     }
 
-
     /**
      * Get the HTTP Request object
      *
-     * @return  \Zend\Http\Request       the HTTP Request object
-     * @access  private
+     * @return \Zend\Http\PhpEnvironment\Request The HTTP Request object
+     * @access private
      */
-    private function getRequest()
-    {
+    private function getRequest() {
         return $this->request;
     }
-
 
     /**
      * Get the HTTP Response object
      *
-     * @return  \Zend\Http\Response      the HTTP Response object
+     * @return  \Zend\Http\PhpEnvironment\Response The HTTP Response object
      * @access  private
      */
-    public function getResponse()
-    {
+    public function getResponse() {
         if ($this->response === null) {
             $this->response = new PhpResponse();
         }
 
         return $this->response;
     }
+
+    /**
+     * Get real name of transfered file
+     *
+     * @return string Real name of file
+     * @access public
+     */
+    public function getRealFileName() {
+        return $this->realFileName;
+    }
+
+    /**
+     * Sets real file name
+     *
+     * @param string $value plain or base64 encoded file name
+     * @return \ZfTusServer\Server object
+     * @access private
+     */
+    private function setRealFileName($value) {
+        $base64FileNamePos = strpos($value, 'filename ');
+        if ($base64FileNamePos !== false) {
+            $value = substr($value, $base64FileNamePos + 9); // 9 - length of 'filename '
+            $this->realFileName = base64_decode($value);
+        } else {
+            $this->realFileName = $value;
+        }
+        return $this;
+    }
+
+    /**
+     * Allows GET method (it means allow download uploded files)
+     * @param bool $allow
+     * @return \ZfTusServer\Server
+     */
+    public function setAllowGetMethod($allow) {
+        $this->allowGetMethod = (bool) $allow;
+        return $this;
+    }
+
+    /**
+     * Is GET method allowed
+     * @return bool
+     */
+    public function getAllowGetMethod() {
+        return $this->allowGetMethod;
+    }
+
+    /**
+     * Sets upload size limit
+     * @param int $value
+     * @return \ZfTusServer\Server
+     * @throws \BadMethodCallException
+     */
+    public function setAllowMaxSize($value) {
+        $value = intval($value);
+        if ($value > 0) {
+            $this->allowMaxSize = $value;
+        } else {
+            throw new \BadMethodCallException('given $value must be integer, greater them 0');
+        }
+        return $this;
+    }
+
 }
