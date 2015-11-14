@@ -37,6 +37,8 @@ class Server {
      */
     private $metaData = null;
 
+    private $debugMode = false;
+
     /**
      * Constructor
      *
@@ -45,9 +47,10 @@ class Server {
      * @access  public
      */
 
-    public function __construct($directory, \Zend\Http\PhpEnvironment\Request $request) {
+    public function __construct($directory, \Zend\Http\PhpEnvironment\Request $request, $debug = false) {
         $this->setDirectory($directory);
         $this->request = $request;
+        $this->debugMode = $debug;
     }
 
     /**
@@ -433,8 +436,17 @@ class Server {
         }
 
         $fileName = $this->getMetaDataValue($file, 'FileName');
-        $mime = FileToolsService::detectMimeType($file);
-        FileToolsService::downloadFile($file, $fileName, $mime);
+
+        if ($this->debugMode) {
+            $isInfo = $this->getRequest()->getQuery('info', -1);
+            if ($isInfo !== -1) {
+                FileToolsService::downloadFile($file . '.info', $fileName . '.info');
+            }
+        }
+        else {
+            $mime = FileToolsService::detectMimeType($file);
+            FileToolsService::downloadFile($file, $fileName, $mime);
+        }
         exit;
     }
 
