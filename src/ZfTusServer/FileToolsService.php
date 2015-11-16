@@ -21,8 +21,8 @@ class FileToolsService {
      * @access public
 	 * @param string $filePath pełna ścieżka do pliku (zwykle zawiera zahaszowaną nazwę)
 	 * @param string $fileName oryginalna nazwa pliku
-	 * @param int $size rozwmiar pliku w bajtach
 	 * @param string $mime typ MIME
+	 * @param int $size rozwmiar pliku w bajtach
 	 * @return boolean
      * @throws \Symfony\Component\Filesystem\Exception\FileNotFoundException
 	 */
