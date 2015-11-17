@@ -212,7 +212,7 @@ class FileToolsService {
      */
     public static function formatFileSize($size, $locale, $emptyValue = '-') {
         $sizes = array(' B', ' kB', ' MB', ' GB', ' TB', ' PB');
-        if (is_null($size) || $size === 0) {
+        if (is_null($size) || $size == 0) {
             return($emptyValue);
         }
 
