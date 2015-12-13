@@ -342,6 +342,12 @@ class Server {
                 set_time_limit(self::TIMEOUT);
 
                 // Manage user abort
+                // according to comments on PHP Manual page (http://php.net/manual/en/function.connection-aborted.php)
+                // this method doesn't work, but we cannot send 0 to browser, becouse its not compattible with TUS.
+                // But maybe some day (some PHP version) it starts working. Thath's why I leave it here.
+//                echo "\n";
+//                ob_flush();
+//                flush();
                 if (connection_status() != CONNECTION_NORMAL) {
                     throw new Exception\Abort('User abort connexion');
                 }
@@ -352,6 +358,11 @@ class Server {
                 }
 
                 $size_read = strlen($data);
+
+                // If user sent 0 bytes and we do not write all data yet, abort
+                if ($size_read === 0 && $total_write + $offset_session < $content_length) {
+                    throw new Exception\Abort('Stream unexpectedly ended. Mayby user aborted?');
+                }
 
                 // If user sent more datas than expected (by POST Final-Length), abort
                 if ($size_read + $current_size > $content_length) {
@@ -374,7 +385,7 @@ class Server {
                 $total_write += $size_write;
                 $this->setMetaDataValue($this->uuid, 'Offset', $current_size);
 
-                if ($total_write === $content_length) {
+                if ($total_write + $offset_session === $content_length) {
                     fclose($handle_input);
                     fclose($handle_output);
                     $this->saveMetaData($content_length, $current_size, true, false);
