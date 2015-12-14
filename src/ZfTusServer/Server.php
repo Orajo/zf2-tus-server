@@ -29,6 +29,10 @@ class Server {
     private $request = null;
     private $response = null;
     private $allowGetMethod = true;
+    /**
+     * TODO: handle this limit in patch method
+     * @var int
+     */
     private $allowMaxSize = 2147483648; // 2GB
 
     /**
@@ -37,16 +41,21 @@ class Server {
      */
     private $metaData = null;
 
+    /**
+     * Switches debug mode.
+     * In this mode downloading info files is allowed (usefull for testing)
+     * @var bool
+     */
     private $debugMode = false;
 
     /**
      * Constructor
      *
-     * @param   string      $directory      The directory to use for save the file
-     * @param   null|array  $redis_options  Override the default Redis options
-     * @access  public
+     * @param string $directory The directory to use for save the file
+     * @param \Zend\Http\PhpEnvironment\Request  $request  Request object
+     * @param bool $debug switches debug mode - {@see Server::debugMode}
+     * @access public
      */
-
     public function __construct($directory, \Zend\Http\PhpEnvironment\Request $request, $debug = false) {
         $this->setDirectory($directory);
         $this->request = $request;
@@ -791,5 +800,4 @@ class Server {
         }
         return $this;
     }
-
 }
