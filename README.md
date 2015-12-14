@@ -17,8 +17,10 @@ Server Usage
  */
 public function uploadAction() {
   // Create and configure server
-  $server = new \\Server('/path/to/save/file', 
-                           $this->getRequest()
+  $debug = false;
+  $server = new \ZfTusServer\Server('/path/to/save/file', 
+                           $this->getRequest(),
+                           $debug
   );
 
   // Run server
