@@ -462,6 +462,10 @@ class Server {
             if ($isInfo !== -1) {
                 FileToolsService::downloadFile($file . '.info', $fileName . '.info');
             }
+            else {
+                $mime = FileToolsService::detectMimeType($file);
+				FileToolsService::downloadFile($file, $fileName, $mime);
+			}
         }
         else {
             $mime = FileToolsService::detectMimeType($file);
