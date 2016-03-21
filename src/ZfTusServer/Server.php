@@ -143,7 +143,6 @@ class Server {
 
             $this->getResponse()->setStatusCode(\Zend\Http\Response::STATUS_CODE_500)
                     ->setContent($e->getMessage());
-//            error_log(var_dump($e));
             $this->addCommonHeader();
         }
 
@@ -185,11 +184,15 @@ class Server {
      */
     private function getUserUuid() {
         if ($this->uuid === null) {
-            $uuid = $this->getRequest()->getQuery('uuid');
-            if (empty($uuid)) {
+
+            $path = $this->getRequest()->getUri()->getPath();
+            $uuid = substr($path, strrpos($path, '/')+1);
+            if (strlen($uuid) === 32 && preg_match('/[a-z0-9]/', $uuid)) {
+                $this->uuid = $uuid;
+            }
+            else {
                 throw new \InvalidArgumentException('The uuid cannot be empty.');
             }
-            $this->uuid = $uuid;
         }
         return $this->uuid;
     }
@@ -237,7 +240,7 @@ class Server {
 
         $uri = $this->getRequest()->getUri();
         $this->getResponse()->setHeaders(
-                (new \Zend\Http\Headers())->addHeaderLine('Location', $uri->getScheme() . '://' . $uri->getHost() . $uri->getPath() . '?uuid=' . $this->uuid)
+                (new \Zend\Http\Headers())->addHeaderLine('Location', $uri->getScheme() . '://' . $uri->getHost() . $uri->getPath() . '/' . $this->uuid)
         );
         unset($uri);
     }
