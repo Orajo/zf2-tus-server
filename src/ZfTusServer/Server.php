@@ -769,7 +769,7 @@ class Server {
             $value = substr($value, $base64FileNamePos + 9); // 9 - length of 'filename '
             $this->realFileName = base64_decode($value);
         } else {
-            $this->realFileName = $value;
+            $this->realFileName = base64_decode($value);
         }
         return $this;
     }
