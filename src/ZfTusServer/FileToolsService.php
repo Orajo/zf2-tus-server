@@ -106,10 +106,11 @@ class FileToolsService {
     /**
 	 * Internal method to detect the mime type of a file
 	 *
-	 * @param string $fileName File name
+	 * @param string $fileName File name on storage; could be a hash or anything
+	 * @param string $userFileName Real name of file, understandable for users. If ommited $fileName will be used.
 	 * @return string Mimetype of given file
 	 */
-	public static function detectMimeType($fileName) {
+	public static function detectMimeType($fileName, $userFileName = '') {
 		if(!file_exists($fileName)) {
 			return '';
 		}
@@ -135,7 +136,11 @@ class FileToolsService {
 
 		// dodatkowe sprawdzenie i korekta dla docx, xlsx, pptx
 		if(empty($result) || $result == 'application/zip') {
-			$pathParts = pathinfo($fileName);
+            if (empty($userFileName)) {
+                $userFileName = $fileName;
+            }
+
+			$pathParts = pathinfo($userFileName);
 			switch($pathParts['extension']) {
 				case '7z':
 					$result = 'application/x-7z-compressed';

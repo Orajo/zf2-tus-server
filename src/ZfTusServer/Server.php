@@ -431,7 +431,7 @@ class Server {
      */
     private function processOptions() {
         $this->uuid = null;
-        $this->getResponse()->getStatusCode(200);
+        $this->getResponse()->getStatusCode(204);
     }
 
     /**
@@ -497,7 +497,7 @@ class Server {
 
             $headers->addHeaders([
                 'Tus-Version' => self::TUS_VERSION,
-                'Tus-Extension' => '',
+                'Tus-Extension' => 'creation',
                 'Tus-Max-Size' => $this->allowMaxSize,
                 'Allow' => $allowedMethods,
                 'Access-Control-Allow-Methods' => $allowedMethods,
@@ -673,6 +673,15 @@ class Server {
             $ext = $info->getExtension();
             $this->metaData['Extension'] = $ext;
         }
+        if ($isFinal) {
+            $this->metaData['MimeType'] = FileToolsService::detectMimeType(
+                $this->directory . $this->getUserUuid(),
+                $this->getRealFileName()
+            );
+        }
+        else {
+            $this->metaData['MimeType'] = '';
+        }
 
         $json = Json::encode($this->metaData);
         file_put_contents($this->directory . $this->getUserUuid() . '.info', $json);
@@ -769,7 +778,7 @@ class Server {
             $value = substr($value, $base64FileNamePos + 9); // 9 - length of 'filename '
             $this->realFileName = base64_decode($value);
         } else {
-            $this->realFileName = $value;
+            $this->realFileName = base64_decode($value);
         }
         return $this;
     }
