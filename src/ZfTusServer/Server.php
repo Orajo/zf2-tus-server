@@ -679,9 +679,6 @@ class Server {
                 $this->getRealFileName()
             );
         }
-        else {
-            $this->metaData['MimeType'] = '';
-        }
 
         $json = Json::encode($this->metaData);
         file_put_contents($this->directory . $this->getUserUuid() . '.info', $json);
@@ -700,6 +697,7 @@ class Server {
             'Offset' => 0,
             'Extension' => '',
             'FileName' => '',
+            'MimeType' => '',
             'IsPartial' => true,
             'IsFinal' => false,
             'PartialUploads' => null, // unused
