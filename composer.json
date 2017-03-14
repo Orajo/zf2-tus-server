@@ -12,8 +12,10 @@
         "email"   : "orajo@windowslive.com",
         "role"    : "Developer"
     }],
+    "keywords": ["tus", "upload"],
     "license": "MIT",
     "type": "library",
+    "homepage": "https://github.com/Orajo/zf2-tus-server",
     "autoload": {
         "psr-0": {
             "ZfTusServer": "src/"
