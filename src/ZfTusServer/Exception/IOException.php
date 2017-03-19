@@ -9,7 +9,7 @@
  * file that was distributed with this source code.
  */
 
-namespace ZfTusServer\Exception; 
+namespace ZfTusServer\Exception;
 
 /**
  * Exception class thrown when a filesystem operation failure happens.
