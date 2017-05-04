@@ -140,38 +140,40 @@ class FileToolsService {
             }
 
             $pathParts = pathinfo($userFileName);
-            switch ($pathParts['extension']) {
-                case '7z':
-                    $result = 'application/x-7z-compressed';
-                    break;
-                case 'xlsx':
-                case 'xltx':
-                case 'xlsm':
-                case 'xltm':
-                case 'xlam':
-                case 'xlsb':
-                    $result = 'application/msexcel';
-                    break;
-                case 'docx':
-                case 'dotx':
-                case 'docm':
-                case 'dotm':
-                    $result = 'application/msword';
-                    break;
-                case 'pptx':
-                case 'pptx':
-                case 'potx':
-                case 'ppsx':
-                case 'ppam':
-                case 'pptm':
-                case 'potm':
-                case 'ppsm':
-                    $result = 'application/mspowerpoint';
-                    break;
-                case 'vsd':
-                case 'vsdx':
-                    $result = 'application/x-visio';
-                    break;
+            if (isset($pathParts['extension'])) {
+                switch ($pathParts['extension']) {
+                    case '7z':
+                        $result = 'application/x-7z-compressed';
+                        break;
+                    case 'xlsx':
+                    case 'xltx':
+                    case 'xlsm':
+                    case 'xltm':
+                    case 'xlam':
+                    case 'xlsb':
+                        $result = 'application/msexcel';
+                        break;
+                    case 'docx':
+                    case 'dotx':
+                    case 'docm':
+                    case 'dotm':
+                        $result = 'application/msword';
+                        break;
+                    case 'pptx':
+                    case 'pptx':
+                    case 'potx':
+                    case 'ppsx':
+                    case 'ppam':
+                    case 'pptm':
+                    case 'potm':
+                    case 'ppsm':
+                        $result = 'application/mspowerpoint';
+                        break;
+                    case 'vsd':
+                    case 'vsdx':
+                        $result = 'application/x-visio';
+                        break;
+                }
             }
         }
 

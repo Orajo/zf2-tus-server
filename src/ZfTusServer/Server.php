@@ -168,8 +168,7 @@ class Server {
 
     /**
      * Build a new UUID (use in the POST request)
-     *
-     * @access  private
+     * @return void
      */
     private function buildUuid() {
         $this->uuid = hash('md5', uniqid(mt_rand() . php_uname(), true));
@@ -204,7 +203,6 @@ class Server {
      * @throws  \ZfTusServer\Exception\BadHeader     If the final length header isn't a positive integer
      * @throws  \ZfTusServer\Exception\File          If the file already exists in the filesystem
      * @throws  \ZfTusServer\Exception\File          If the creation of file failed
-     * @access  private
      */
     private function processPost() {
 
@@ -240,7 +238,7 @@ class Server {
 
         $uri = $this->getRequest()->getUri();
         $this->getResponse()->setHeaders(
-                (new \Zend\Http\Headers())->addHeaderLine('Location', $uri->getScheme() . '://' . $uri->getHost() . $uri->getPath() . '/' . $this->uuid)
+            (new \Zend\Http\Headers())->addHeaderLine('Location', $uri->getScheme() . '://' . $uri->getHost() . $uri->getPath() . '/' . $this->uuid)
         );
         unset($uri);
     }
@@ -248,8 +246,9 @@ class Server {
     /**
      * Process the HEAD request
      *
+     * @link http://tus.io/protocols/resumable-upload.html#head Description of this reuest type
+     *
      * @throws \Exception If the uuid isn't know
-     * @access private
      */
     private function processHead() {
         if ($this->existsInMetaData($this->uuid, 'ID') === false) {
@@ -257,18 +256,24 @@ class Server {
             return;
         }
 
-        // is file in storage exists?
+        // if file in storage does not exists
         if (!file_exists($this->directory . $this->getFilename())) {
-            // if not - allow new upload
+            // allow new upload
             $this->removeFromMetaData($this->uuid);
             $this->getResponse()->setStatusCode(PhpResponse::STATUS_CODE_404);
             return;
         }
 
-        $offset = $this->getMetaDataValue($this->uuid, 'Offset');
-
         $this->getResponse()->setStatusCode(PhpResponse::STATUS_CODE_200);
-        $this->getResponse()->setHeaders((new Headers())->addHeaderLine('Upload-Offset', $offset));
+
+        $offset = $this->getMetaDataValue($this->uuid, 'Offset');
+        $headers = $this->getResponse()->getHeaders();
+        $headers->addHeaderLine('Upload-Offset', $offset);
+
+        $length = $this->getMetaDataValue($this->uuid, 'Size');
+        $headers->addHeaderLine('Upload-Length', $length);
+
+        $headers->addHeaderLine('Cache-Control', 'no-store');
     }
 
     /**
@@ -305,30 +310,33 @@ class Server {
             throw new Exception\BadHeader('Content-Type must be "application/offset+octet-stream"');
         }
 
-        // Initialize vars
+        // ffset of current PATCH request
         $offset_header = (int) $headers['Upload-Offset'];
-        $offset_session = (int) $this->getMetaDataValue($this->uuid, 'Offset');
-        $length_session = (int) $this->getMetaDataValue($this->uuid, 'Size');
+        // Length of data of the current PATCH request
         $content_length = (int) $headers['Content-Length'];
-        if ($content_length < $length_session) {
-            $content_length = $length_session;
-        }
+        // Last offset, taken from session
+        $offset_session = (int) $this->getMetaDataValue($this->uuid, 'Offset');
+        // Total length of file (expected data)
+        $length_session = (int) $this->getMetaDataValue($this->uuid, 'Size');
+
         $this->setRealFileName($this->getMetaDataValue($this->uuid, 'FileName'));
 
-        // Check consistency (user vars vs database vars)
+        // Check consistency (user vars vs session vars)
         if ($offset_session === null || $offset_session !== $offset_header) {
-            throw new Exception\BadHeader('Upload-Offset header isn\'t the same as in Redis');
-        }
-
-        // Check if the file isn't already entirely write
-        if ($offset_session === $content_length || $content_length === 0) {
-            // the whole file was uploaded
-            $this->getResponse()->setStatusCode(PhpResponse::STATUS_CODE_200);
+            $this->getResponse()->setStatusCode(PhpResponse::STATUS_CODE_409);
             $this->getResponse()->setHeaders((new Headers())->addHeaderLine('Upload-Offset', $offset_session));
             return;
         }
 
-        // Read / Write datas
+        // Check if the file is already entirely write
+        if ($offset_session === $length_session || $length_session === 0) {
+            // the whole file was uploaded
+            $this->getResponse()->setStatusCode(PhpResponse::STATUS_CODE_204);
+            $this->getResponse()->setHeaders((new Headers())->addHeaderLine('Upload-Offset', $offset_session));
+            return;
+        }
+
+        // Read / Write data
         $handle_input = fopen('php://input', 'rb');
         if ($handle_input === false) {
             throw new Exception\File('Impossible to open php://input');
@@ -340,22 +348,26 @@ class Server {
             throw new Exception\File('Impossible to open file to write into');
         }
 
-        if (fseek($handle_output, (int) $offset_session) === false) {
+        if (fseek($handle_output, $offset_session) === false) {
             throw new Exception\File('Impossible to move pointer in the good position');
         }
 
         ignore_user_abort(false);
 
-        $current_size = (int) $offset_session;
+        /* @var $current_size Int Total received data lenght, including all chunks */
+        $current_size = $offset_session;
+        /* @var $total_write Int Length od saved data in current PATCH request */
         $total_write = 0;
 
+        $return_code = PhpResponse::STATUS_CODE_204;
+
         try {
-            while (true) {
+            while ($total_write < $content_length) {
                 set_time_limit(self::TIMEOUT);
 
                 // Manage user abort
                 // according to comments on PHP Manual page (http://php.net/manual/en/function.connection-aborted.php)
-                // this method doesn't work, but we cannot send 0 to browser, becouse its not compattible with TUS.
+                // this method doesn't work, but we cannot send 0 to browser, becouse it's not compatible with TUS.
                 // But maybe some day (some PHP version) it starts working. Thath's why I leave it here.
 //                echo "\n";
 //                ob_flush();
@@ -372,12 +384,12 @@ class Server {
                 $size_read = strlen($data);
 
                 // If user sent 0 bytes and we do not write all data yet, abort
-                if ($size_read === 0 && $total_write + $offset_session < $content_length) {
+                if ($size_read === 0 && $current_size < $length_session && $content_length < $length_session) {
                     throw new Exception\Abort('Stream unexpectedly ended. Mayby user aborted?');
                 }
 
                 // If user sent more datas than expected (by POST Final-Length), abort
-                if ($size_read + $current_size > $content_length) {
+                if ($size_read + $current_size > $length_session) {
                     throw new Exception\Max('Size sent is greather than max length expected');
                 }
 
@@ -390,38 +402,43 @@ class Server {
                 // Write datas
                 $size_write = fwrite($handle_output, $data);
                 if ($size_write === false) {
-                    throw new Exception\File('Impossible to write the datas');
+                    throw new Exception\File('Unable to write data');
                 }
 
                 $current_size += $size_write;
                 $total_write += $size_write;
                 $this->setMetaDataValue($this->uuid, 'Offset', $current_size);
 
-                if ($total_write + $offset_session === $content_length) {
-                    fclose($handle_input);
-                    fclose($handle_output);
-                    $this->saveMetaData($content_length, $current_size, true, false);
-                    break;
+                if ($current_size === $length_session) {
+                    $this->saveMetaData($length_session, $current_size, true, false);
                 } else {
-                    $this->saveMetaData($content_length, $current_size, false, true);
+                    $this->saveMetaData($length_session, $current_size, false, true);
                 }
             }
-        } catch (Exception\Max $e) {
+            $this->getResponse()->getHeaders()->addHeaderLine('Upload-Offset', $current_size);
+        }
+        catch (Exception\Max $e) {
+            $return_code = PhpResponse::STATUS_CODE_400;
+            $this->getResponse()->setContent($e->getMessage());
+        }
+        catch (Exception\File $e) {
+            $return_code = PhpResponse::STATUS_CODE_500;
+            $this->getResponse()->setContent($e->getMessage());
+        }
+        catch (Exception\Abort $e) {
+            $return_code = PhpResponse::STATUS_CODE_100;
+            $this->getResponse()->setContent($e->getMessage());
+        }
+        catch(\Exception $e) {
+            $return_code = PhpResponse::STATUS_CODE_500;
+            $this->getResponse()->setContent($e->getMessage());
+        }
+        finally {
             fclose($handle_input);
             fclose($handle_output);
-            return $this->getResponse()->setStatusCode(PhpResponse::STATUS_CODE_400);
-        } catch (Exception\File $e) {
-            fclose($handle_input);
-            fclose($handle_output);
-            return $this->getResponse()->setStatusCode(PhpResponse::STATUS_CODE_500);
-        } catch (Exception\Abort $e) {
-            fclose($handle_input);
-            fclose($handle_output);
-            return $this->getResponse()->setStatusCode(PhpResponse::STATUS_CODE_100);
         }
 
-        $this->getResponse()->setStatusCode(PhpResponse::STATUS_CODE_200);
-        $this->getResponse()->setHeaders((new Headers())->addHeaderLine('Upload-Offset', $current_size));
+        return $this->getResponse()->setStatusCode($return_code);
     }
 
     /**
@@ -568,7 +585,7 @@ class Server {
     }
 
     /**
-     * Get the Redis connection
+     * Get the session info
      *
      * @return  \Zend\Session\Container
      * @access  private
@@ -583,7 +600,7 @@ class Server {
     }
 
     /**
-     * Set a value in the Redis database
+     * Set a value in the session
      *
      * @param   string      $id     The id to use to set the value (an id can have multiple key)
      * @param   string      $key    The key for wich you want set the value
@@ -776,7 +793,7 @@ class Server {
             $value = substr($value, $base64FileNamePos + 9); // 9 - length of 'filename '
             $this->realFileName = base64_decode($value);
         } else {
-            $this->realFileName = base64_decode($value);
+            $this->realFileName = $value;
         }
         return $this;
     }
