@@ -313,7 +313,7 @@ class Server {
         // ffset of current PATCH request
         $offset_header = (int) $headers['Upload-Offset'];
         // Length of data of the current PATCH request
-        $content_length = (int) $headers['Content-Length'];
+        $content_length = isset($headers['Content-Length']) ? (int) $headers['Content-Length'] : null;
         // Last offset, taken from session
         $offset_session = (int) $this->getMetaDataValue($this->uuid, 'Offset');
         // Total length of file (expected data)
@@ -356,13 +356,13 @@ class Server {
 
         /* @var $current_size Int Total received data lenght, including all chunks */
         $current_size = $offset_session;
-        /* @var $total_write Int Length od saved data in current PATCH request */
+        /* @var $total_write Int Length of saved data in current PATCH request */
         $total_write = 0;
 
         $return_code = PhpResponse::STATUS_CODE_204;
 
         try {
-            while ($total_write < $content_length) {
+            while (true) {
                 set_time_limit(self::TIMEOUT);
 
                 // Manage user abort
@@ -384,18 +384,24 @@ class Server {
                 $size_read = strlen($data);
 
                 // If user sent 0 bytes and we do not write all data yet, abort
-                if ($size_read === 0 && $current_size < $length_session && $content_length < $length_session) {
-                    throw new Exception\Abort('Stream unexpectedly ended. Mayby user aborted?');
+                if ($size_read === 0) {
+                    if (!is_null($content_length) && $total_write < $content_length) {
+                        throw new Exception\Abort('Stream unexpectedly ended. Mayby user aborted?');
+                    }
+                    else {
+                        // end of stream
+                        break;
+                    }
                 }
 
                 // If user sent more datas than expected (by POST Final-Length), abort
-                if ($size_read + $current_size > $length_session) {
+                if (!is_null($content_length) && ($size_read + $current_size > $length_session)) {
                     throw new Exception\Max('Size sent is greather than max length expected');
                 }
 
 
                 // If user sent more datas than expected (by PATCH Content-Length), abort
-                if ($size_read + $total_write > $content_length) {
+                if (!is_null($content_length) && ($size_read + $total_write > $content_length)) {
                     throw new Exception\Max('Size sent is greather than max length expected');
                 }
 
@@ -411,6 +417,7 @@ class Server {
 
                 if ($current_size === $length_session) {
                     $this->saveMetaData($length_session, $current_size, true, false);
+                    break;
                 } else {
                     $this->saveMetaData($length_session, $current_size, false, true);
                 }
