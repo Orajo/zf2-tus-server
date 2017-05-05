@@ -302,7 +302,7 @@ class Server {
             throw new Exception\BadHeader('Upload-Offset must be a positive integer');
         }
 
-        if (is_numeric($headers['Content-Length']) === false || $headers['Content-Length'] < 0) {
+        if (isset($headers['Content-Length']) && (is_numeric($headers['Content-Length']) === false || $headers['Content-Length'] < 0)) {
             throw new Exception\BadHeader('Content-Length must be a positive integer');
         }
 
