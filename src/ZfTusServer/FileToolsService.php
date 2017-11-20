@@ -5,27 +5,37 @@ namespace ZfTusServer;
 use NumberFormatter;
 
 /**
- * Serwis z metodami do pobierania plików z serwera i wysyłania klientom
+ * Service with tools for file download support
  *
- * @author Jarosław Wasilewski <jaroslaw.wasilewski@bit-sa.pl>
+ * @author Jarosław Wasilewski <orajo@windowslive.com>
  * @access public
  */
 class FileToolsService {
 
     /**
-     * Metoda obsługuje pobieranie przez klienta wybranego pliku
-     * Opracowana na podstawie rozwiązania ze strony https://gist.github.com/854168
+     * Download using Content-Disposition: Attachment
+     */
+    const OPEN_MODE_ATTACHMENT = 'Attachment';
+
+    /**
+     * Download using Content-Disposition: Inline (open in browser, if possible)
+     */
+    const OPEN_MODE_INLINE = 'Inline';
+
+    /**
+     * Handles file download to browser
      *
-     * @link https://gist.github.com/854168 metoda bazuje na tym rozwiązaniu
+     * @link https://gist.github.com/854168 this method is based on this code
      * @access public
-     * @param string $filePath pełna ścieżka do pliku (zwykle zawiera zahaszowaną nazwę)
-     * @param string $fileName oryginalna nazwa pliku
-     * @param string $mime typ MIME
-     * @param int $size rozwmiar pliku w bajtach
+     * @api
+     * @param string $filePath full local path to downloaded file (typically contains hashed file name)
+     * @param string $fileName original file name
+     * @param string|null $mime MIME type; if null tries to guess using @see FileToolsService::downloadFile()
+     * @param int $size file size in bytes
      * @return boolean
      * @throws \Symfony\Component\Filesystem\Exception\FileNotFoundException
      */
-    public static function downloadFile($filePath, $fileName, $mime = '', $size = -1) {
+    public static function downloadFile($filePath, $fileName, $mime = '', $size = -1, $openMode = self::OPEN_MODE_ATTACHMENT) {
 
         if (!file_exists($filePath)) {
             throw new Exception\FileNotFoundException(null, 0, null, $filePath);
@@ -42,13 +52,17 @@ class FileToolsService {
             header('Content-Type: application/octet-stream');
         }
         else {
+            if(is_null($mime)) {
+                $mime = self::detectMimeType($filePath, $fileName);
+            }
             header('Content-Type: ' . $mime);
         }
+
         if (strstr(filter_input(INPUT_SERVER, 'HTTP_USER_AGENT', FILTER_SANITIZE_STRING), "MSIE") != false) {
-            header("Content-Disposition: attachment; filename=" . urlencode($fileName) . '; modification-date="' . date('r', $mtime) . '";');
+            header("Content-Disposition: ".$openMode."; filename=" . urlencode($fileName) . '; modification-date="' . date('r', $mtime) . '";');
         }
         else {
-            header("Content-Disposition: attachment; filename=\"" . $fileName . '"; modification-date="' . date('r', $mtime) . '";');
+            header("Content-Disposition: ".$openMode."; filename=\"" . $fileName . '"; modification-date="' . date('r', $mtime) . '";');
         }
 
         if (function_exists('apache_get_modules') && in_array('mod_xsendfile', apache_get_modules())) {
@@ -234,5 +248,4 @@ class FileToolsService {
         }
         return $size . $sizes[$i];
     }
-
 }
