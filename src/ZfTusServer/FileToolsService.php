@@ -113,7 +113,7 @@ class FileToolsService {
                 readfile($filePath);
             }
         }
-        return true;
+        exit;
     }
 
     /**
