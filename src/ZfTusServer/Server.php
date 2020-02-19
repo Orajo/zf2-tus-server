@@ -63,6 +63,10 @@ class Server {
      * @var string Name of the domain, on which the file upload is provided
      */
     private $domain = '';
+    /**
+     * @var string
+     */
+    private $fileType  = '';
 
     /**
      * Constructor
@@ -404,13 +408,19 @@ class Server {
      * @access private
      */
     private function setRealFileName($value): self {
-        $base64FileNamePos = strpos($value, 'filename ');
-        if (is_int($base64FileNamePos) && $base64FileNamePos >= 0) {
-            $value = substr($value, $base64FileNamePos + 9); // 9 - length of 'filename '
-            $this->realFileName = base64_decode($value);
-        }
-        else {
-            $this->realFileName = $value;
+        $parts = explode(',', $value);
+        foreach ($parts as $part) {
+            if (($namePos = strpos($part, 'filename ')) !== false) {
+                $value = substr($part, $namePos + 9); // 9 - length of 'filename '
+                $this->realFileName = base64_decode($value);
+            }
+            elseif(($namePos = strpos($part, 'filetype ')) !== false) {
+                $value = substr($part, $namePos + 9); // 9 - length of 'filetype '
+                $this->fileType = base64_decode($value);
+            }
+            else {
+                $this->realFileName = $value;
+            }
         }
         return $this;
     }
@@ -479,10 +489,13 @@ class Server {
             $this->metaData['Extension'] = $ext;
         }
         if ($isFinal) {
-            $this->metaData['MimeType'] = FileToolsService::detectMimeType(
-                $this->directory . $this->getUserUuid(),
-                $this->getRealFileName()
-            );
+            if (!$this->fileType) {
+                $this->fileType = FileToolsService::detectMimeType(
+                    $this->directory . $this->getUserUuid(),
+                    $this->getRealFileName()
+                );
+            }
+            $this->metaData['MimeType'] = $this->fileType;
         }
 
         $json = Json::encode($this->metaData);
