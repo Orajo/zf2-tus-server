@@ -865,7 +865,7 @@ class Server {
                 ]
             );
             if ($this->allowMaxSize > 0) {
-                $headers->addHeader('Tus-Max-Size', $this->allowMaxSize);
+                $headers->addHeaderLine('Tus-Max-Size', $this->allowMaxSize);
             }
         }
         return $this->response->setHeaders($headers);
