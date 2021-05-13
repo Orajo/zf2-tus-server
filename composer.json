@@ -17,8 +17,8 @@
     "type": "library",
     "homepage": "https://github.com/Orajo/zf2-tus-server",
     "autoload": {
-        "psr-0": {
-            "ZfTusServer": "src/"
+        "psr-4": {
+            "ZfTusServer\\": "src/"
         }
     },
     "require": {
