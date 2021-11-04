@@ -1,4 +1,4 @@
-Zend Framework 2 Tus Server
+Laminas Tus Server
 ======
 
 Library for [tus server](http://www.tus.io/) (tus protocol 1.0)
@@ -13,7 +13,7 @@ Server Usage
 
 ```php
 /**
- * Zend Framework action for uploading files
+ * Laminas action for uploading files
  */
 public function uploadAction() {
   // Create and configure server

@@ -2,6 +2,7 @@
 
 namespace ZfTusServer;
 
+use Laminas\I18n\Filter\NumberFormat;
 use NumberFormatter;
 
 /**
@@ -90,8 +91,8 @@ class FileToolsService {
                             ($size > 0) ? intval($size / 51200) + 60 // 1 minute more than what it should take to D/L at 50kb/sec
                                     : 1 // Minimum of 1 second in case size is found to be 0
             ));
-            $chunksize = 1 * (1024 * 1024); // how many megabytes to read at a time
-            if ($size > $chunksize) {
+            $chunkSize = 1 * (1024 * 1024); // how many megabytes to read at a time
+            if ($size > $chunkSize) {
                 // Chunking file for download
                 $handle = fopen($filePath, 'rb');
                 if ($handle === false) {
@@ -99,7 +100,7 @@ class FileToolsService {
                 }
                 $buffer = '';
                 while (!feof($handle)) {
-                    $buffer = fread($handle, $chunksize);
+                    $buffer = fread($handle, $chunkSize);
                     echo $buffer;
 
                     // if somewhare before was ob_start()
@@ -123,7 +124,8 @@ class FileToolsService {
      * @param string $userFileName Real name of file, understandable for users. If ommited $fileName will be used.
      * @return string Mimetype of given file
      */
-    public static function detectMimeType($fileName, $userFileName = '') {
+    public static function detectMimeType($fileName, $userFileName = ''): string
+    {
         if (!file_exists($fileName)) {
             return '';
         }
@@ -204,7 +206,8 @@ class FileToolsService {
      * @param string $val
      * @return int
      */
-    private static function toBytes($val) {
+    private static function toBytes($val): int
+    {
         $val = trim($val);
         $last = strtolower($val[strlen($val) - 1]);
         $val = (int)$val;
@@ -222,16 +225,19 @@ class FileToolsService {
 
     /**
      * Format file size according to specified locale
-     * @param int $size File size in [B] bytes
-     * @param string $locale name of locale settings
-     * @param string $emptyValue waht is returned if $size is empty or zero
+     *
+     * @param int|null $size               File size in [B] bytes
+     * @param string $locale          name of locale settings
+          * @param string $emptyValue waht is returned if $size is empty or zero
+     *
      * @return string value and unit
      *
      * @assert (1024, 'pl_PL') == '1 kB'
      * @assert (356, 'pl_PL') == '356 B'
      * @assert (6587, 'pl_PL') == '6,43 kB'
      */
-    public static function formatFileSize($size, $locale, $emptyValue = '-') {
+    public static function formatFileSize($size, string $locale, string $emptyValue = '-'): string
+    {
         $sizes = array(' B', ' kB', ' MB', ' GB', ' TB', ' PB');
         if (is_null($size) || $size == 0) {
             return($emptyValue);
@@ -244,7 +250,7 @@ class FileToolsService {
 
         $size = round($size / pow(1024, ($i = floor(log($size, 1024)))), $precision);
         if (class_exists('NumberFormat')) {
-            $filter = new \Zend\I18n\Filter\NumberFormat($locale, NumberFormatter::DECIMAL, NumberFormatter::TYPE_DOUBLE);
+            $filter = new NumberFormat($locale, NumberFormatter::DECIMAL, NumberFormatter::TYPE_DOUBLE);
             return $filter->filter($size) . $sizes[$i];
         }
         return $size . $sizes[$i];
