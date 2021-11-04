@@ -1,31 +1,40 @@
 {
     "name": "orajo/zf2-tus-server",
     "description": "Zend Framework 2 (PHP) library for tus server, based on php-tus library by Simon Leblanc.",
-    "authors": [{
-        "name": "Simon Leblanc",
-        "email": "contact@leblanc-simon.eu",
-        "homepage": "http://www.leblanc-simon.fr",
-        "role": "Developer"
-    },
-    {
-        "name"    : "Jaroslaw Wasilewski",
-        "email"   : "orajo@windowslive.com",
-        "role"    : "Developer"
-    }],
-    "keywords": ["tus", "upload"],
+    "authors": [
+        {
+            "name": "Simon Leblanc",
+            "email": "contact@leblanc-simon.eu",
+            "homepage": "http://www.leblanc-simon.fr",
+            "role": "Developer"
+        },
+        {
+            "name": "Jaroslaw Wasilewski",
+            "email": "orajo@windowslive.com",
+            "role": "Developer"
+        }
+    ],
+    "keywords": [
+        "tus",
+        "upload"
+    ],
     "license": "MIT",
     "type": "library",
     "homepage": "https://github.com/Orajo/zf2-tus-server",
     "autoload": {
-        "psr-0": {
-            "ZfTusServer": "src/"
+        "psr-4": {
+            "ZfTusServer\\": "src/"
         }
     },
     "require": {
-        "php": ">=5.3.0",
-        "zendframework/zendframework" : ">2.3.0"
+        "php": ">=7.1.0",
+        "laminas/laminas-http": "^2.5",
+        "laminas/laminas-i18n": "^2.5",
+        "laminas/laminas-i18n-resources": "^2.5",
+        "laminas/laminas-json": "^2.5",
+        "laminas/laminas-dependency-plugin": "^2.1"
     },
     "require-dev": {
-        "phpunit/phpunit": "3.7.*"
+        "phpunit/phpunit": "4.*"
     }
 }
