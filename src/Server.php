@@ -13,17 +13,15 @@
 
 namespace ZfTusServer;
 
-use Zend\Http\Header\ContentLength;
-use Zend\Http\Header\HeaderInterface;
-use Zend\Http\Headers;
-use Zend\Http\PhpEnvironment\Request;
-use Zend\Http\PhpEnvironment\Response as PhpResponse;
-use Zend\Http\Response;
-use Zend\Json\Json;
-use Zend\Session\Container;
+use Laminas\Http\Header\ContentLength;
+use Laminas\Http\Header\HeaderInterface;
+use Laminas\Http\Headers;
+use Laminas\Http\PhpEnvironment\Request;
+use Laminas\Http\PhpEnvironment\Response as PhpResponse;
+use Laminas\Http\Response;
+use Laminas\Json\Json;
 use ZfTusServer\Exception\BadHeader;
 use ZfTusServer\Exception\File;
-use ZfTusServer\Exception\Required;
 
 class Server {
 
@@ -183,7 +181,6 @@ class Server {
         // The process must only sent the HTTP headers and content: kill request after send
         exit;
     }
-
 
     /**
      * Set the directory where the file will be store
@@ -382,7 +379,7 @@ class Server {
             if ($headerObj instanceof HeaderInterface) {
                 $value = $headerObj->getFieldValue();
 
-                // \Zend\Http\Header\ContentLength has a bug in initialization
+                // \Laminas\Http\Header\ContentLength has a bug in initialization
                 // if header value is 0 then it sets value as null
                 if ($value === null && $headerObj instanceof ContentLength) {
                     $value = 0;
