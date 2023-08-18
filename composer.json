@@ -1,6 +1,6 @@
 {
     "name": "orajo/zf2-tus-server",
-    "description": "Zend Framework 2 (PHP) library for tus server, based on php-tus library by Simon Leblanc.",
+    "description": "Laminas (PHP) library for tus server, based on php-tus library by Simon Leblanc.",
     "authors": [
         {
             "name": "Simon Leblanc",
@@ -16,7 +16,8 @@
     ],
     "keywords": [
         "tus",
-        "upload"
+        "upload",
+        "laminas"
     ],
     "license": "MIT",
     "type": "library",
