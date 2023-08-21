@@ -20,6 +20,7 @@ use Laminas\Http\PhpEnvironment\Request;
 use Laminas\Http\PhpEnvironment\Response as PhpResponse;
 use Laminas\Http\Response;
 use Laminas\Json\Json;
+use League\Flysystem\Filesystem;
 use ZfTusServer\Exception\BadHeader;
 use ZfTusServer\Exception\File;
 
@@ -65,6 +66,7 @@ class Server {
      * @var string
      */
     private $fileType  = '';
+    private Filesystem $filesystem;
 
     /**
      * Constructor
@@ -76,10 +78,11 @@ class Server {
      * @throws File
      * @access public
      */
-    public function __construct(string $directory, Request $request, bool $debug = false) {
+    public function __construct(string $directory, Request $request, Filesystem $filesystem, bool $debug = false) {
         $this->setDirectory($directory);
         $this->request = $request;
         $this->debugMode = $debug;
+        $this->filesystem = $filesystem;
     }
 
     /**
@@ -797,16 +800,12 @@ class Server {
                 'The requested method Get is not allowed', Response::STATUS_CODE_405
             );
         }
-        $file = $this->directory . $this->getFilename();
-        if (!file_exists($file)) {
+        $file = $this->getFilename();
+        if (!$this->filesystem->fileExists($file)) {
             throw new Exception\Request('The file ' . $this->uuid . ' doesn\'t exist', 404);
         }
 
-        if (!is_readable($file)) {
-            throw new Exception\Request('The file ' . $this->uuid . ' is unaccessible', 403);
-        }
-
-        if (!file_exists($file . '.info') || !is_readable($file . '.info')) {
+        if (!$this->filesystem->fileExists($file . '.info') || !is_readable($file . '.info')) {
             throw new Exception\Request('The file ' . $this->uuid . ' has no metadata', 500);
         }
 
@@ -815,16 +814,16 @@ class Server {
         if ($this->debugMode) {
             $isInfo = $this->getRequest()->getQuery('info', -1);
             if ($isInfo !== -1) {
-                FileToolsService::downloadFile($file . '.info', $fileName . '.info');
+                FileToolsService::downloadFile($file . '.info', $fileName . '.info', $this->filesystem);
             }
             else {
                 $mime = FileToolsService::detectMimeType($file);
-                FileToolsService::downloadFile($file, $fileName, $mime);
+                FileToolsService::downloadFile($file, $fileName, $this->filesystem, $mime);
             }
         }
         else {
             $mime = FileToolsService::detectMimeType($file);
-            FileToolsService::downloadFile($file, $fileName, $mime);
+            FileToolsService::downloadFile($file, $fileName, $this->filesystem, $mime);
         }
         exit;
     }
