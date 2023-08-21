@@ -32,7 +32,7 @@
         "laminas/laminas-http": "^2.5",
         "laminas/laminas-i18n": "^2.5",
         "laminas/laminas-i18n-resources": "^2.5",
-        "laminas/laminas-json": "^2.5",
+        "laminas/laminas-json": "^3.0",
         "laminas/laminas-dependency-plugin": "^2.1"
     },
     "require-dev": {
