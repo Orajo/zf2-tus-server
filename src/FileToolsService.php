@@ -36,17 +36,13 @@ class FileToolsService {
      * @return boolean
      * @throws \Symfony\Component\Filesystem\Exception\FileNotFoundException
      */
-    public static function downloadFile($filePath, $fileName, $mime = '', $size = -1, $openMode = self::OPEN_MODE_ATTACHMENT) {
-
-        if (!file_exists($filePath)) {
-            throw new Exception\FileNotFoundException(null, 0, null, $filePath);
+    public static function downloadFile($filePath, $fileName, Filesystem $remoteDisk, $mime = '', $size = -1, $openMode = self::OPEN_MODE_ATTACHMENT)
+    {
+        if (!$remoteDisk->fileExists($filePath)) {
+            throw new Exception(null, 0, null, $filePath);
         }
-        if (!is_readable($filePath)) {
-            throw new Exception\FileNotFoundException(sprintf('File %s is not readable', $filePath), 0, null, $filePath);
-        }
-
         // Fetching File
-        $mtime = ($mtime = filemtime($filePath)) ? $mtime : gmtime();
+        $mtime = $remoteDisk->lastModified($filePath) ?: gmtime();
 
         if ($mime === '') {
             header("Content-Type: application/force-download");
@@ -108,10 +104,19 @@ class FileToolsService {
                     flush();
                 }
                 fclose($handle);
-            }
-            else {
-                // Streaming whole file for download
-                readfile($filePath);
+            } else {
+                try {
+                    $handle = $remoteDisk->readStream($filePath);
+                } catch (Exception) {
+                    throw new Exception(sprintf('File %s is not readable', $filePath), 0, null, $filePath);
+                }
+                $buffer = fread($handle, $chunkSize);
+                echo $buffer;
+
+                // if somewhare before was ob_start()
+                if (ob_get_level() > 0) ob_flush();
+                flush();
+                fclose($handle);
             }
         }
         exit;
@@ -176,7 +181,6 @@ class FileToolsService {
                         $result = 'application/msword';
                         break;
                     case 'pptx':
-                    case 'pptx':
                     case 'potx':
                     case 'ppsx':
                     case 'ppam':
@@ -198,61 +202,5 @@ class FileToolsService {
         }
 
         return $result;
-    }
-
-    /**
-     * Converts {@see memory_limit} result to bytes
-     *
-     * @param string $val
-     * @return int
-     */
-    private static function toBytes($val): int
-    {
-        $val = trim($val);
-        $last = strtolower($val[strlen($val) - 1]);
-        $val = (int)$val;
-        switch ($last) {
-            // The 'G' modifier is available since PHP 5.1.0
-            case 'g':
-                $val *= 1024;
-            case 'm':
-                $val *= 1024;
-            case 'k':
-                $val *= 1024;
-        }
-        return $val;
-    }
-
-    /**
-     * Format file size according to specified locale
-     *
-     * @param int|null $size               File size in [B] bytes
-     * @param string $locale          name of locale settings
-          * @param string $emptyValue waht is returned if $size is empty or zero
-     *
-     * @return string value and unit
-     *
-     * @assert (1024, 'pl_PL') == '1 kB'
-     * @assert (356, 'pl_PL') == '356 B'
-     * @assert (6587, 'pl_PL') == '6,43 kB'
-     */
-    public static function formatFileSize($size, string $locale, string $emptyValue = '-'): string
-    {
-        $sizes = array(' B', ' kB', ' MB', ' GB', ' TB', ' PB');
-        if (is_null($size) || $size == 0) {
-            return($emptyValue);
-        }
-
-        $precision = 2;
-        if ($size == (int) $size && $size < 1024) { // < 1MB
-            $precision = 0;
-        }
-
-        $size = round($size / pow(1024, ($i = floor(log($size, 1024)))), $precision);
-        if (class_exists('NumberFormat')) {
-            $filter = new NumberFormat($locale, NumberFormatter::DECIMAL, NumberFormatter::TYPE_DOUBLE);
-            return $filter->filter($size) . $sizes[$i];
-        }
-        return $size . $sizes[$i];
     }
 }
