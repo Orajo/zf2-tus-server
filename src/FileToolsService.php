@@ -59,7 +59,7 @@ class FileToolsService {
             header('Content-Type: ' . $mime);
         }
 
-        if (strstr(htmlspecialchars($_SERVER['HTTP_USER_AGENT']), "MSIE") != false) {
+        if (strpos(htmlspecialchars($_SERVER['HTTP_USER_AGENT']), "MSIE") !== false) {
             header("Content-Disposition: ".$openMode."; filename=" . urlencode($fileName) . '; modification-date="' . date('r', $mtime) . '";');
         }
         else {
