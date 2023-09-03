@@ -27,14 +27,18 @@
         }
     },
     "require": {
-        "php": ">=7.1.0",
+        "php": "^7.1 || ^8.0",
         "laminas/laminas-http": "^2.5",
         "laminas/laminas-i18n": "^2.5",
         "laminas/laminas-i18n-resources": "^2.5",
-        "laminas/laminas-json": "^2.5",
-        "laminas/laminas-dependency-plugin": "^2.1"
+        "laminas/laminas-json": "^3.5"
     },
     "require-dev": {
         "phpunit/phpunit": "4.*"
+    },
+    "config": {
+        "allow-plugins": {
+            "laminas/laminas-dependency-plugin": true
+        }
     }
 }
