@@ -10,21 +10,31 @@ use [composer](http://getcomposer.org/)
 
 Server Usage
 ------------
+This libbrary depends on [Flysystem](https://flysystem.thephpleague.com/)
 
 ```php
 /**
  * Laminas action for uploading files
  */
 public function uploadAction() {
-  // Create and configure server
-  $debug = false;
-  $server = new \ZfTusServer\Server('/path/to/save/file', 
-                           $this->getRequest(),
-                           $debug
-  );
+     // Create and configure server
+    $debug = false;
+    // The internal adapter
+    $adapter = new League\Flysystem\Local\LocalFilesystemAdapter(
+        __DIR__.'/storage/'
+    );
 
-  // Run server
-  $server->process(true);
+    // The FilesystemOperator
+    $filesystem = new League\Flysystem\Filesystem($adapter);
+
+    $server = new \ZfTusServer\Server('/path/to/save/file', 
+                           $this->getRequest(),
+                           $adapter
+                           $debug
+    );
+
+    // Run server
+    $server->process(true);
 }
 ```
 
