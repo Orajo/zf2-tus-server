@@ -51,7 +51,7 @@ class FileToolsService {
         }
         else {
             if(is_null($mime)) {
-                $mime = self::detectMimeType($filePath, $fileName);
+                $mime = $remoteDisk->mimeType($filePath);
             }
             header('Content-Type: ' . $mime);
         }
@@ -73,7 +73,7 @@ class FileToolsService {
             $memory_limit = ini_get('memory_limit');
             // get file size
             if ($size === -1) {
-                $size = filesize($filePath);
+                $size = $remoteDisk->fileSize($filePath);
             }
 
             if (intval($size + 1) > self::toBytes($memory_limit) && intval($size * 1.5) <= 1073741824) {
@@ -85,8 +85,8 @@ class FileToolsService {
             header("Content-Length: " . $size);
             // Set the time limit based on an average D/L speed of 50kb/sec
             set_time_limit(min(7200, // No more than 120 minutes (this is really bad, but...)
-                            ($size > 0) ? intval($size / 51200) + 60 // 1 minute more than what it should take to D/L at 50kb/sec
-                                    : 1 // Minimum of 1 second in case size is found to be 0
+                ($size > 0) ? intval($size / 51200) + 60 // 1 minute more than what it should take to D/L at 50kb/sec
+                    : 1 // Minimum of 1 second in case size is found to be 0
             ));
             $chunkSize = 1 * (1024 * 1024); // how many megabytes to read at a time
             if ($size > $chunkSize) {
@@ -121,6 +121,29 @@ class FileToolsService {
             }
         }
         exit;
+    }
+
+    /**
+     * Converts {@see memory_limit} result to bytes
+     *
+     * @param string $val
+     * @return int
+     */
+    private static function toBytes($val): int
+    {
+        $val = trim($val);
+        $last = strtolower($val[strlen($val) - 1]);
+        $val = (int)$val;
+        switch ($last) {
+            // The 'G' modifier is available since PHP 5.1.0
+            case 'g':
+                $val *= 1024;
+            case 'm':
+                $val *= 1024;
+            case 'k':
+                $val *= 1024;
+        }
+        return $val;
     }
 
     /**
