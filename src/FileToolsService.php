@@ -227,4 +227,37 @@ class FileToolsService {
 
         return $result;
     }
+    
+    /**
+     * Format file size according to specified locale
+     *
+     * @param int|null $size               File size in [B] bytes
+     * @param string $locale          name of locale settings
+          * @param string $emptyValue waht is returned if $size is empty or zero
+     *
+     * @return string value and unit
+     *
+     * @assert (1024, 'pl_PL') == '1 kB'
+     * @assert (356, 'pl_PL') == '356 B'
+     * @assert (6587, 'pl_PL') == '6,43 kB'
+     */
+    public static function formatFileSize($size, string $locale, string $emptyValue = '-'): string
+    {
+        $sizes = array(' B', ' kB', ' MB', ' GB', ' TB', ' PB');
+        if (is_null($size) || $size == 0) {
+            return($emptyValue);
+        }
+
+        $precision = 2;
+        if ($size == (int) $size && $size < 1024) { // < 1MB
+            $precision = 0;
+        }
+
+        $size = round($size / pow(1024, ($i = floor(log($size, 1024)))), $precision);
+        if (class_exists('NumberFormat')) {
+            $filter = new NumberFormat($locale, NumberFormatter::DECIMAL, NumberFormatter::TYPE_DOUBLE);
+            return $filter->filter($size) . $sizes[$i];
+        }
+        return $size . $sizes[$i];
+    }
 }
