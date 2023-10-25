@@ -91,7 +91,7 @@ class FileToolsService {
             $chunkSize = 1 * (1024 * 1024); // how many megabytes to read at a time
             if ($size > $chunkSize) {
                 // Chunking file for download
-                $handle = fopen($filePath, 'rb');
+                $handle = $remoteDisk->readStream($filePath);
                 if ($handle === false) {
                     return false;
                 }
