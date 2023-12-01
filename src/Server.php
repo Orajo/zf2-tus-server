@@ -805,7 +805,7 @@ class Server {
             throw new Exception\Request('The file ' . $this->uuid . ' doesn\'t exist', 404);
         }
 
-        if (!$this->filesystem->fileExists($file . '.info') || !is_readable($file . '.info')) {
+        if (!$this->filesystem->fileExists($file . '.info')) {
             throw new Exception\Request('The file ' . $this->uuid . ' has no metadata', 500);
         }
 
