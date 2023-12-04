@@ -4,7 +4,9 @@ namespace ZfTusServer;
 
 use Laminas\I18n\Filter\NumberFormat;
 use League\Flysystem\Filesystem;
+use League\Flysystem\FilesystemException;
 use NumberFormatter;
+use ZfTusServer\Exception\FileNotFoundException;
 
 /**
  * Service with tools for file download support
@@ -17,12 +19,12 @@ class FileToolsService {
     /**
      * Download using Content-Disposition: Attachment
      */
-    const OPEN_MODE_ATTACHMENT = 'Attachment';
+    public const OPEN_MODE_ATTACHMENT = 'Attachment';
 
     /**
      * Download using Content-Disposition: Inline (open in browser, if possible)
      */
-    const OPEN_MODE_INLINE = 'Inline';
+    public const OPEN_MODE_INLINE = 'Inline';
 
     /**
      * Handles file download to browser
@@ -32,15 +34,17 @@ class FileToolsService {
      * @api
      * @param string $filePath full local path to downloaded file (typically contains hashed file name)
      * @param string $fileName original file name
-     * @param string|null $mime MIME type; if null tries to guess using @see FileToolsService::downloadFile()
+     * @param Filesystem $remoteDisk
+     * @param string $mime MIME type; if null tries to guess using @see FileToolsService::downloadFile()
      * @param int $size file size in bytes
+     * @param string $openMode
      * @return boolean
-     * @throws \Symfony\Component\Filesystem\Exception\FileNotFoundException
+     * @throws FilesystemException
      */
     public static function downloadFile($filePath, $fileName, Filesystem $remoteDisk, $mime = '', $size = -1, $openMode = self::OPEN_MODE_ATTACHMENT)
     {
         if (!$remoteDisk->fileExists($filePath)) {
-            throw new Exception(null, 0, null, $filePath);
+            throw new FileNotFoundException(null, 0, null, $filePath);
         }
         // Fetching File
         $mtime = $remoteDisk->lastModified($filePath) ?: gmtime();
@@ -70,13 +74,13 @@ class FileToolsService {
         else {
             // Sending file directly via script
             // according memory_limit byt not higher than 1GB
-            $memory_limit = ini_get('memory_limit');
+            $memoryLimit = ini_get('memory_limit');
             // get file size
             if ($size === -1) {
                 $size = $remoteDisk->fileSize($filePath);
             }
 
-            if (intval($size + 1) > self::toBytes($memory_limit) && intval($size * 1.5) <= 1073741824) {
+            if (((int)($size + 1)) > self::toBytes($memoryLimit) && (((int)($size * 1.5)) <= 1073741824)) {
                 // Setting memory limit
                 ini_set('memory_limit', intval($size * 1.5));
             }
@@ -85,7 +89,7 @@ class FileToolsService {
             header("Content-Length: " . $size);
             // Set the time limit based on an average D/L speed of 50kb/sec
             set_time_limit(min(7200, // No more than 120 minutes (this is really bad, but...)
-                ($size > 0) ? intval($size / 51200) + 60 // 1 minute more than what it should take to D/L at 50kb/sec
+                ($size > 0) ? (int)($size / 51200) + 60 // 1 minute more than what it should take to D/L at 50kb/sec
                     : 1 // Minimum of 1 second in case size is found to be 0
             ));
             $chunkSize = 1 * (1024 * 1024); // how many megabytes to read at a time
@@ -119,17 +123,17 @@ class FileToolsService {
     {
         $val = trim($val);
         $last = strtolower($val[strlen($val) - 1]);
-        $val = (int)$val;
+        $value = (int)$val;
         switch ($last) {
             // The 'G' modifier is available since PHP 5.1.0
             case 'g':
-                $val *= 1024;
+                $value *= 1024;
             case 'm':
-                $val *= 1024;
+                $value *= 1024;
             case 'k':
-                $val *= 1024;
+                $value *= 1024;
         }
-        return $val;
+        return $value;
     }
 
     /**
@@ -235,15 +239,15 @@ class FileToolsService {
         }
 
         $precision = 2;
-        if ($size == (int) $size && $size < 1024) { // < 1MB
+        if ($size == (int)$size && $size < 1024) { // < 1MB
             $precision = 0;
         }
 
-        $size = round($size / pow(1024, ($i = floor(log($size, 1024)))), $precision);
+        $result = round($size / pow(1024, ($i = floor(log($size, 1024)))), $precision);
         if (class_exists('NumberFormat')) {
             $filter = new NumberFormat($locale, NumberFormatter::DECIMAL, NumberFormatter::TYPE_DOUBLE);
-            return $filter->filter($size) . $sizes[$i];
+            return $filter->filter($result) . $sizes[$i];
         }
-        return $size . $sizes[$i];
+        return $result . $sizes[$i];
     }
 }
