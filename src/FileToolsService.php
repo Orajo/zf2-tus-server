@@ -89,36 +89,22 @@ class FileToolsService {
                     : 1 // Minimum of 1 second in case size is found to be 0
             ));
             $chunkSize = 1 * (1024 * 1024); // how many megabytes to read at a time
-            if ($size > $chunkSize) {
-                // Chunking file for download
-                $handle = $remoteDisk->readStream($filePath);
-                if ($handle === false) {
-                    return false;
-                }
-                $buffer = '';
-                while (!feof($handle)) {
-                    $buffer = fread($handle, $chunkSize);
-                    echo $buffer;
 
-                    // if somewhare before was ob_start()
-                    if (ob_get_level() > 0) ob_flush();
-                    flush();
-                }
-                fclose($handle);
-            } else {
-                try {
-                    $handle = $remoteDisk->readStream($filePath);
-                } catch (Exception) {
-                    throw new Exception(sprintf('File %s is not readable', $filePath), 0, null, $filePath);
-                }
+            // Chunking file for download
+            $handle = $remoteDisk->readStream($filePath);
+            if ($handle === false) {
+                return false;
+            }
+            
+            while (!feof($handle)) {
                 $buffer = fread($handle, $chunkSize);
                 echo $buffer;
 
                 // if somewhare before was ob_start()
                 if (ob_get_level() > 0) ob_flush();
                 flush();
-                fclose($handle);
             }
+            fclose($handle);
         }
         exit;
     }
@@ -227,7 +213,7 @@ class FileToolsService {
 
         return $result;
     }
-    
+
     /**
      * Format file size according to specified locale
      *
