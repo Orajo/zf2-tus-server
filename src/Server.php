@@ -30,25 +30,25 @@ class Server {
     public const TUS_VERSION = '1.0.0';
 
     private $uuid;
-    private $directory = '';
-    private $realFileName = '';
+    private string $directory = '';
+    private string $realFileName = '';
     private $request;
     /**
      * @var PhpResponse
      */
     private $response;
-    private $allowGetMethod = true;
+    private bool $allowGetMethod = true;
     /**
      * TODO: handle this limit in patch method
      *
      * @var int
      */
-    private $allowMaxSize = 2147483648; // 2GB
+    private int $allowMaxSize = 2147483648; // 2GB
 
     /**
      * @var array
      */
-    private $metaData;
+    private array $metaData;
 
     /**
      * Switches debug mode.
@@ -56,16 +56,16 @@ class Server {
      *
      * @var bool
      */
-    private $debugMode;
+    private bool $debugMode;
 
     /**
      * @var string Name of the domain, on which the file upload is provided
      */
-    private $domain = '';
+    private string $domain = '';
     /**
      * @var string
      */
-    private $fileType  = '';
+    private string $fileType  = '';
     private Filesystem $filesystem;
 
     /**
@@ -635,15 +635,12 @@ class Server {
             throw new Exception\BadHeader('Upload-Offset must be a positive integer');
         }
 
-        if (isset($headers['Content-Length']) && (is_numeric(
-                    $headers['Content-Length']
-                ) === false || $headers['Content-Length'] < 0)) {
+        if (isset($headers['Content-Length'])
+            && (is_numeric($headers['Content-Length']) === false || $headers['Content-Length'] < 0)) {
             throw new Exception\BadHeader('Content-Length must be a positive integer');
         }
 
-        if (is_string(
-                $headers['Content-Type']
-            ) === false || $headers['Content-Type'] !== 'application/offset+octet-stream') {
+        if ($headers['Content-Type'] !== 'application/offset+octet-stream') {
             throw new Exception\BadHeader('Content-Type must be "application/offset+octet-stream"');
         }
 
@@ -836,7 +833,7 @@ class Server {
      * @access private
      * @return PhpResponse
      */
-    private function addCommonHeader($isOption = false): PhpResponse {
+    private function addCommonHeader(bool $isOption = false): PhpResponse {
         $headers = $this->getResponse()->getHeaders();
         $headers->addHeaderLine('Tus-Resumable', self::TUS_VERSION);
         $headers->addHeaderLine('Access-Control-Allow-Origin', '*');
@@ -883,7 +880,8 @@ class Server {
      *
      * @return Server
      */
-    public function setAllowGetMethod($allow): Server {
+    public function setAllowGetMethod($allow): self
+    {
         $this->allowGetMethod = (bool)$allow;
         return $this;
     }
@@ -896,11 +894,11 @@ class Server {
      * @return Server
      * @throws \BadMethodCallException
      */
-    public function setAllowMaxSize(int $value): Server {
+    public function setAllowMaxSize(int $value): self
+    {
         if ($value > 0) {
             $this->allowMaxSize = $value;
-        }
-        else {
+        } else {
             throw new \BadMethodCallException('given $value must be integer, greater them 0');
         }
         return $this;
