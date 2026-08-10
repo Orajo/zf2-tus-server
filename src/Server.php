@@ -46,9 +46,9 @@ class Server {
     private int $allowMaxSize = 2147483648; // 2GB
 
     /**
-     * @var array
+     * @var array|null
      */
-    private array $metaData;
+    private ?array $metaData = null;
 
     /**
      * Switches debug mode.
